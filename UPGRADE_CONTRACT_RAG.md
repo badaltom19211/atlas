@@ -1,5 +1,8 @@
 # Upgrade an existing Atlas app to the contract notebook
 
+This guide describes the contract-only release from 2026-11-03. For the current
+Genie plus contract search release, use [UPGRADE_GENIE_AND_RAG.md](UPGRADE_GENIE_AND_RAG.md).
+
 This version replaces the bike/project Deep Agent with the supplied contract Q&A
 workflow. It does not call Genie. Existing chat history, notes and feedback remain
 in the same Lakebase tables; no database migration is required.

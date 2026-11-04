@@ -50,3 +50,14 @@ def test_old_genie_settings_do_not_configure_contract_workflow(monkeypatch):
     settings = replace(configured('https://workspace.example.test'), contract_index='')
     with pytest.raises(RuntimeError, match='DATABRICKS_CONTRACT_INDEX'):
         settings.validate()
+
+
+@pytest.mark.parametrize('agent_id', ['not-an-id', 'abc', 'REPLACE_WITH_TARGET_GENIE_AGENT_ID', 'a' * 33])
+def test_invalid_genie_configuration_is_rejected(agent_id):
+    with pytest.raises(RuntimeError):
+        replace(configured('https://workspace.example.test'), genie_agent_id=agent_id).validate()
+
+
+def test_genie_is_optional_for_existing_contract_only_installations():
+    configured('https://workspace.example.test').validate()
+    replace(configured('https://workspace.example.test'), genie_agent_id='a' * 32).validate()

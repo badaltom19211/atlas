@@ -1,27 +1,31 @@
 # Set up Atlas contract chat in a new Databricks workspace
 
-If the app and chat tables already exist, use [UPGRADE_CONTRACT_RAG.md](UPGRADE_CONTRACT_RAG.md).
+If the app and chat tables already exist, use [UPGRADE_GENIE_AND_RAG.md](UPGRADE_GENIE_AND_RAG.md).
 
 ## 1. Prepare the contract resources
 
 This app requires:
+- A Genie Agent configured with the desired structured contract tables and SQL warehouse.
 - An AI Search/Vector Search index supporting HYBRID search with these columns:
   chunk_id, file_name, document_title, vendor_name, section_title, page_start,
   page_end, contextualized_text, citation.
 - An embedding serving endpoint accepting input and returning data[].embedding.
   It must match the embedding model and vector dimensions used to build the index.
 - An answer serving endpoint accepting messages and returning choices[].message.content.
+  With Genie enabled it must also support function calling; the supplied Llama 3.3
+  70B endpoint supports this API feature where available in the workspace.
 - A Lakebase project, branch, compute endpoint and PostgreSQL database.
 
 Creating the app or Lakebase does not create the index, document corpus or models.
-The app does not use Genie or an AI Gateway model service.
+No AI Gateway model service is required.
 
 ## 2. Configure app.yaml
 
-Replace the four REPLACE_WITH_ placeholders:
+Replace the five REPLACE_WITH_ placeholders:
 
 | Setting | Target workspace value |
 |---|---|
+| DATABRICKS_GENIE_AGENT_ID | The 32-character ID after /genie/rooms/ in the URL |
 | DATABRICKS_CONTRACT_INDEX | catalog.schema.index |
 | DATABRICKS_EMBEDDING_ENDPOINT | Embedding model serving endpoint name |
 | DATABRICKS_ANSWER_ENDPOINT | Chat model serving endpoint name |
@@ -40,7 +44,7 @@ Use the nine-dot app switcher → Databricks Apps → create a custom app.
 Record the app's service principal client/application UUID from Authorization.
 This is not its numeric principal ID or OAuth integration client ID.
 
-In Settings → User authorization, add vector-search and model-serving.
+In Settings → User authorization, add genie, vector-search and model-serving.
 Keep the standard identity scopes. A workspace administrator may need to enable
 these scopes. In Resources, attach Database with the intended Lakebase project,
 branch and database, resource key postgres, and Can connect and create.
@@ -89,13 +93,19 @@ Grant users or a group CAN USE on the app. Users also need USE CATALOG, USE SCHE
 and SELECT on the index, and CAN QUERY on both model serving endpoints. Retrieval
 and model calls use the signed-in user's permissions. Lakebase uses the app service
 principal; chat ownership is enforced by the backend.
+Genie users also need CAN RUN on the selected agent and access to its underlying
+data. Its configured warehouse credentials must be valid; Genie can use embedded
+author credentials for compute. Scopes alone do not grant data permissions.
 
-Follow the test steps in UPGRADE_CONTRACT_RAG.md. New storage starts empty; this
+Follow the test steps in UPGRADE_GENIE_AND_RAG.md. New storage starts empty; this
 package does not migrate chats from another workspace or copy source documents.
 Existing history migration requires separate user identity mapping.
 
 Troubleshooting:
-- Missing configuration: fill all four new app.yaml settings.
+- Missing configuration: fill all five app.yaml settings.
+- Genie errors: check the ID, Agent-mode API availability, genie scope, and user
+  access to the agent, SQL warehouse and its tables.
+- Routing errors: the answer endpoint must support the tools/tool_choice API.
 - Missing PGHOST/PGUSER: attach the intended database in Resources.
 - Missing tables: initialize the intended database once.
 - Database permission error: check the attached app role and table grants.

@@ -1,11 +1,13 @@
 # Atlas
 
 React + FastAPI contract chat with Databricks authentication and Lakebase history.
-The backend implements the supplied ContractRAGAgent notebook: embed the latest
-question, retrieve contract excerpts with HYBRID search, then generate an answer.
-Genie and AI Gateway are not used by this version.
+The backend combines Genie for structured contract data with the supplied
+ContractRAGAgent notebook for document clauses. The existing answer endpoint
+selects Genie, document search, or both using function calling. Document search
+embeds a question, retrieves HYBRID search results, and generates a grounded answer.
+No AI Gateway model service is required.
 
-For an existing installation, follow [UPGRADE_CONTRACT_RAG.md](UPGRADE_CONTRACT_RAG.md).
+For an existing installation, follow [UPGRADE_GENIE_AND_RAG.md](UPGRADE_GENIE_AND_RAG.md).
 For a fresh workspace, follow [SETUP_NEW_WORKSPACE.md](SETUP_NEW_WORKSPACE.md).
 
 The red-and-white UI keeps private conversation history, feedback, notes, saved
@@ -13,14 +15,18 @@ responses, and the signed-in user's name and initial avatar. The composer accept
 text only. Answers contain natural prose; source metadata is returned separately
 as assistant.custom_outputs and saved in the existing atlas_tool_runs table.
 
-The notebook logic lives in server/notebook_agent.py and runs inside the app.
+The notebook logic lives in server/notebook_agent.py, routing in
+server/routed_agent.py, and the Genie API adapter in server/genie.py.
+These run inside the app under the signed-in user's identity.
 Editing the original workspace notebook does not automatically update this code.
 No notebook job or separate MLflow agent deployment is required. The original
 MLflow decorators/model registration are replaced by the app's request handling
 and saved metadata; this port does not create MLflow tracing spans.
 
-Configuration uses DATABRICKS_CONTRACT_INDEX, DATABRICKS_EMBEDDING_ENDPOINT,
-DATABRICKS_ANSWER_ENDPOINT and LAKEBASE_ENDPOINT. Repository configuration is a
+Configuration uses DATABRICKS_GENIE_AGENT_ID, DATABRICKS_CONTRACT_INDEX,
+DATABRICKS_EMBEDDING_ENDPOINT, DATABRICKS_ANSWER_ENDPOINT and LAKEBASE_ENDPOINT.
+Omitting or emptying the Genie ID keeps the previous contract-only workflow.
+Repository configuration is a
 template. Never place credentials in app.yaml or VITE_* variables.
 
 For optional local development, install Python 3.11+ and Node.js 20.19+ (or a

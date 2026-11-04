@@ -135,6 +135,8 @@ def source_metadata(records, used):
 
 
 class ContractRAGAgent:
+    receipt_name = CONTRACT_TOOL
+
     def __init__(self, settings, http=None):
         self.settings = settings
         self.http = http or DatabricksHTTP(settings)
@@ -197,7 +199,7 @@ class ContractRAGAgent:
     async def stream(self, messages, style="balanced"):
         # Keep the app's existing event contract. The notebook also generates the
         # full answer before emitting it; this is not model token-by-token streaming.
-        receipt = {"id": str(uuid4()), "name": CONTRACT_TOOL, "status": "running", "input": "{}", "output": ""}
+        receipt = {"id": str(uuid4()), "name": self.receipt_name, "status": "running", "input": "{}", "output": ""}
         yield {"type": "tool", "tool": dict(receipt)}
         try:
             async with asyncio.timeout(self.settings.agent_timeout_seconds):

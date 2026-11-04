@@ -1,26 +1,30 @@
-# Contract workflow package
+# Genie and contract workflow package
 
-Prepared 2026-11-03 from the Atlas source and the supplied ContractRAGAgent notebook.
+Updated 2026-11-04. The app now combines Genie structured-data answers with the
+supplied contract-document RAG workflow. A single function call to the existing
+answer model selects Genie, contract search, or both; no AI Gateway service or
+Deep Agents/LangChain dependency is required.
 
-The backend now uses explicit embedding, hybrid contract search and a chat answer
-model. It no longer imports Deep Agents/LangChain or calls Genie/AI Gateway.
-The app uses its existing authenticated request and Lakebase persistence path;
-no separate MLflow deployment or new database schema is required.
+Genie uses the documented Agent-mode Responses API. Requests use each signed-in
+user's credentials. Up to six prior messages inform standalone question routing.
+Each Genie request creates a fresh conversation, avoiding shared remote history.
+Cancellation is attempted when a stopped or timed-out response has known IDs.
 
-Source metadata is preserved separately from the visible answer and survives
-chat reloads. Missing/invalid source IDs remain unknown instead of marking all
-retrieved sources used. This is model-reported attribution, not claim verification.
+Mixed answers keep the sources separate and preserve the available source when
+the other fails. Genie reasoning and raw provider errors are never shown.
+Provenance is saved through the existing Lakebase tool records without a schema
+migration. Internal metadata is returned separately from the visible answer.
 
-The repository copy has configuration placeholders. The Citrix handoff ZIP is
-prepared separately with the notebook's resource values and the previously
-provided Lakebase endpoint. It contains no credentials or existing chat history.
-The original workspace deployment is not changed by this package.
+Repository settings are placeholders. The private ZIP uses the supplied index,
+model endpoint names, latest Genie ID and existing Lakebase resource name.
+It contains no credentials or chat history. Workspace resources and hosted
+deployments are not modified by packaging or publishing this source.
 
-Validation uses fixture model/search responses and an isolated test database.
-A real query in the target Azure workspace is still required before claiming
-successful deployment or live resource integration.
+Validation on 2026-11-04: 83 backend tests and seven frontend tests passed.
+TypeScript and production Vite build passed. Tests cover source selection,
+mixed-source failures, no-answer failures, bounded context, Genie cancellation,
+timeouts, metadata persistence, and user/credential isolation.
 
-Validation on 2026-11-03: 54 backend tests and seven frontend tests passed.
-The TypeScript check and production Vite build passed. Tests cover ordered
-embedding/search/answer calls, source parsing, empty results, upstream failures,
-six-message history, metadata persistence, user isolation and per-user credentials.
+All model, search and Genie responses in these checks are fixtures. Actual
+routing quality, permissions, Azure resource availability, and the reported
+private-network access issue require verification in the target workspace.

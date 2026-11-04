@@ -14,7 +14,7 @@ from sqlalchemy import func, or_, select, update
 from .config import Settings
 from .database import (Comment, Conversation, Message, ToolRun, User, comment_json,
                        conversation_json, create_database, message_json, now)
-from .notebook_agent import CONTRACT_TOOL, ContractRAGAgent
+from .routed_agent import HIDDEN_TOOLS, RoutedAgent
 from .databricks_client import DatabricksHTTP
 from .auth import install_auth
 
@@ -252,7 +252,7 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
             try:
                 async with asyncio.timeout(settings.agent_timeout_seconds):
                     request_model = model or await asyncio.to_thread(
-                        lambda: ContractRAGAgent(settings, http=DatabricksHTTP(settings, token=session.token)))
+                        lambda: RoutedAgent(settings, http=DatabricksHTTP(settings, token=session.token)))
                     async for item in request_model.stream(context, body.style):
                         if isinstance(item, dict) and item.get("type") == "tool":
                             tool = item["tool"]
@@ -261,7 +261,7 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
                             tool_runs[tool["id"]] = tool
                             # Contract evidence is persisted and returned as metadata,
                             # never inserted into the chat's visible tool panel.
-                            if tool["name"] != CONTRACT_TOOL:
+                            if tool["name"] not in HIDDEN_TOOLS:
                                 yield json.dumps(item) + "\n"
                         elif isinstance(item, str):
                             content += item
@@ -273,7 +273,7 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
                 raise
             except Exception as error:
                 status = "error"
-                failure = "Contract search could not complete the response. Check Databricks access and try again."
+                failure = "The assistant could not complete the response. Check Databricks access and try again."
                 logger.warning("Model generation failed (%s)", type(error).__name__)
             finally:
                 # Persist completed, partial, and failed answers; never discard an existing version.

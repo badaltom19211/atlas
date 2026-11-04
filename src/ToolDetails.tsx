@@ -3,7 +3,7 @@ import type { ToolRun } from './types';
 const labels: Record<string, string> = { genie_structured_data_tool: 'Genie', project_rag_tool: 'Project search' };
 
 export function ToolDetails({ tools }: { tools?: ToolRun[] }) {
-  tools = tools?.filter(tool => tool.name !== 'contract_rag_tool');
+  tools = tools?.filter(tool => !['contract_rag_tool', 'structured_contract_agent'].includes(tool.name));
   if (!tools?.length) return null;
   return <details className="tool-details"><summary>Tools used · {tools.length}</summary>
     {tools.map(tool => <div className="tool-result" key={tool.id}>
