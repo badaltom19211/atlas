@@ -19,10 +19,11 @@ class Settings:
     auth_mode: str = env('ATLAS_AUTH_MODE', 'databricks-app')
     databricks_host: str = env('DATABRICKS_HOST')
     databricks_profile: str = env('DATABRICKS_CONFIG_PROFILE')
-    agent_model: str = env('DATABRICKS_AGENT_MODEL')
-    genie_agent_id: str = env('DATABRICKS_GENIE_AGENT_ID')
-    project_index: str = env('DATABRICKS_PROJECT_INDEX')
-    rag_endpoint: str = env('DATABRICKS_RAG_ENDPOINT')
+    contract_index: str = env('DATABRICKS_CONTRACT_INDEX')
+    embedding_endpoint: str = env('DATABRICKS_EMBEDDING_ENDPOINT')
+    answer_endpoint: str = env('DATABRICKS_ANSWER_ENDPOINT')
+    rag_top_k: int = field(default_factory=lambda: int(os.getenv('ATLAS_RAG_TOP_K', '5')))
+    rag_history_messages: int = field(default_factory=lambda: int(os.getenv('ATLAS_RAG_HISTORY_MESSAGES', '6')))
     agent_timeout_seconds: int = 150
     history_backend: str = env('ATLAS_HISTORY_BACKEND', 'lakebase')
     lakebase_endpoint: str = env('LAKEBASE_ENDPOINT')
@@ -46,8 +47,8 @@ class Settings:
         return self.auth_mode == 'databricks-app'
 
     def validate(self):
-        resources = (self.genie_agent_id, self.project_index, self.agent_model,
-                     self.rag_endpoint, self.lakebase_endpoint)
+        resources = (self.contract_index, self.embedding_endpoint,
+                     self.answer_endpoint, self.lakebase_endpoint)
         if any('REPLACE_WITH_' in value for value in resources):
             raise RuntimeError('Replace the target-workspace placeholders in app.yaml before deploying.')
         if self.auth_mode not in ('local', 'databricks-app'):
@@ -57,8 +58,12 @@ class Settings:
         url = urlparse(self.databricks_host)
         if url.scheme != 'https' or not url.hostname or url.username or url.password or url.path not in ('', '/') or url.query or url.fragment:
             raise RuntimeError('DATABRICKS_HOST must be the HTTPS workspace origin.')
-        if not all((self.genie_agent_id, self.project_index, self.agent_model, self.rag_endpoint)):
-            raise RuntimeError('Configure the notebook agent resources.')
+        if not all((self.contract_index, self.embedding_endpoint, self.answer_endpoint)):
+            raise RuntimeError('Configure DATABRICKS_CONTRACT_INDEX, DATABRICKS_EMBEDDING_ENDPOINT and DATABRICKS_ANSWER_ENDPOINT.')
+        if not re.fullmatch(r'[^.\s/]+\.[^.\s/]+\.[^.\s/]+', self.contract_index):
+            raise RuntimeError('DATABRICKS_CONTRACT_INDEX must be a catalog.schema.index name.')
+        if not 1 <= self.rag_top_k <= 10 or not 0 <= self.rag_history_messages <= 20:
+            raise RuntimeError('ATLAS_RAG_TOP_K must be 1-10 and ATLAS_RAG_HISTORY_MESSAGES must be 0-20.')
         if self.history_backend == 'lakebase':
             self.validate_database()
         elif self.history_backend != 'sqlite' or self.auth_mode != 'local':

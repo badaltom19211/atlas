@@ -22,6 +22,19 @@ describe('FastAPI chat integration', () => {
     await expect(readChatResponse(ndjson([{ type: 'delta', text: 'Partial' }]), vi.fn())).rejects.toThrow('before the response was complete');
     await expect(readChatResponse(ndjson([{ type: 'error', message: 'Tool failed' }]), vi.fn())).rejects.toThrow('Tool failed');
   });
+  it('preserves contract metadata without putting it in the visible answer', async () => {
+    const chunk = vi.fn();
+    const message = { ...assistant, content: 'The notice period is 30 days.', tools: [], custom_outputs: {
+      sources: [{ source_no: 1, file_name: 'fixture.pdf', pages: 'p. 4', used_in_answer: true }],
+      citation_status: 'reported',
+    } };
+    const result = await readChatResponse(ndjson([
+      { type: 'delta', text: message.content }, { type: 'done', assistant: message },
+    ]), chunk);
+    expect(result.assistant.custom_outputs).toEqual(message.custom_outputs);
+    expect(chunk).toHaveBeenCalledExactlyOnceWith(message.content);
+    expect(result.assistant.content).not.toContain('fixture.pdf');
+  });
   it('sends to the same-origin API with stable IDs, cancellation, and no browser token', async () => {
     const fetcher = vi.fn().mockResolvedValue(ndjson([{ type: 'done', assistant }]));
     vi.stubGlobal('fetch', fetcher);

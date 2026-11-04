@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
+import json
+
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 from .config import Settings
@@ -116,11 +118,23 @@ def comment_json(comment):
 
 
 def message_json(message):
+    custom_outputs = {"sources": []}
+    for tool in message.tools:
+        if tool.name == "contract_rag_tool" and tool.status == "completed":
+            try:
+                payload = json.loads(tool.output)
+                metadata = payload.get("custom_outputs") if isinstance(payload, dict) else None
+                if isinstance(metadata, dict) and isinstance(metadata.get("sources"), list):
+                    custom_outputs = metadata
+            except (ValueError, TypeError):
+                pass
     return {"id": message.id, "role": message.role, "content": message.content,
             "createdAt": timestamp(message.created_at), "feedback": message.feedback,
             "saved": message.saved, "status": message.status,
             "comments": [comment_json(c) for c in message.comments],
-            "tools": [{"id": t.call_id, "name": t.name, "status": t.status, "input": t.input, "output": t.output} for t in message.tools]}
+            "custom_outputs": custom_outputs,
+            "tools": [{"id": t.call_id, "name": t.name, "status": t.status, "input": t.input, "output": t.output}
+                      for t in message.tools if t.name != "contract_rag_tool"]}
 
 
 def conversation_json(conversation):

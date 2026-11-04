@@ -1,22 +1,26 @@
-# Package preparation
+# Contract workflow package
 
-Prepared 2026-11-01 from the current Atlas app source. The existing deployment was
-not changed. Target-specific resource defaults were removed from the portable
-copy; they must be supplied using app.yaml or the optional local environment.
-Unfilled deployment placeholders fail validation instead of contacting old resources.
-The configuration test fixture uses explicit fake resource names.
+Prepared 2026-11-03 from the Atlas source and the supplied ContractRAGAgent notebook.
 
-SQL schema was generated from the application's SQLAlchemy models for the five
-active chat tables. The legacy login-session table is not created or granted.
-The scripts have not been executed against the destination workspace.
+The backend now uses explicit embedding, hybrid contract search and a chat answer
+model. It no longer imports Deep Agents/LangChain or calls Genie/AI Gateway.
+The app uses its existing authenticated request and Lakebase persistence path;
+no separate MLflow deployment or new database schema is required.
 
-Verification on 2026-11-01: all 28 portable backend tests passed using isolated
-fixture data. React source files match the previously built and deployed UI.
-The ZIP was checked for corruption, excluded files, and original workspace/user
-identifiers. Destination resource availability and live integration remain untested.
+Source metadata is preserved separately from the visible answer and survives
+chat reloads. Missing/invalid source IDs remain unknown instead of marking all
+retrieved sources used. This is model-reported attribution, not claim verification.
 
-Updated 2026-11-02 for GitHub publication with the authenticated account header
-and simplified text-only composer. Frontend build and all five frontend tests
-passed; the matching UI release was deployed and its assets verified. Resource
-settings remain placeholders so this repository can be configured for a new
-workspace. The original workspace deployment is maintained separately.
+The repository copy has configuration placeholders. The Citrix handoff ZIP is
+prepared separately with the notebook's resource values and the previously
+provided Lakebase endpoint. It contains no credentials or existing chat history.
+The original workspace deployment is not changed by this package.
+
+Validation uses fixture model/search responses and an isolated test database.
+A real query in the target Azure workspace is still required before claiming
+successful deployment or live resource integration.
+
+Validation on 2026-11-03: 54 backend tests and seven frontend tests passed.
+The TypeScript check and production Vite build passed. Tests cover ordered
+embedding/search/answer calls, source parsing, empty results, upstream failures,
+six-message history, metadata persistence, user isolation and per-user credentials.

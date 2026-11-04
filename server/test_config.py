@@ -1,4 +1,5 @@
 import pytest
+from dataclasses import replace
 
 from .auth import user_id
 from .config import Settings
@@ -8,8 +9,8 @@ def configured(host):
     return Settings(auth_mode='databricks-app', databricks_host=host,
                     lakebase_endpoint='projects/atlas/branches/production/endpoints/primary',
                     pg_host='database.example.test', pg_user='app-principal',
-                    genie_agent_id='fixture-genie', project_index='catalog.schema.projects',
-                    agent_model='fixture-agent', rag_endpoint='fixture-rag')
+                    contract_index='catalog.schema.contracts',
+                    embedding_endpoint='fixture-embedding', answer_endpoint='fixture-answer')
 
 
 def test_databricks_app_hostname_preserves_local_history_identity():
@@ -30,3 +31,22 @@ def test_databricks_app_hostname_preserves_local_history_identity():
 def test_invalid_workspace_origins_remain_rejected(host):
     with pytest.raises(RuntimeError, match='HTTPS workspace origin'):
         configured(host).validate()
+
+
+@pytest.mark.parametrize('field,value', [
+    ('contract_index', ''), ('embedding_endpoint', ''), ('answer_endpoint', ''),
+    ('contract_index', 'REPLACE_WITH_TARGET_CATALOG_SCHEMA_INDEX'),
+    ('contract_index', 'not-qualified'), ('rag_top_k', 0), ('rag_top_k', 11),
+    ('rag_history_messages', -1), ('rag_history_messages', 21),
+])
+def test_invalid_contract_configuration_is_rejected(field, value):
+    with pytest.raises(RuntimeError):
+        replace(configured('https://workspace.example.test'), **{field: value}).validate()
+
+
+def test_old_genie_settings_do_not_configure_contract_workflow(monkeypatch):
+    monkeypatch.setenv('DATABRICKS_GENIE_AGENT_ID', 'old-genie')
+    monkeypatch.setenv('DATABRICKS_PROJECT_INDEX', 'old.schema.index')
+    settings = replace(configured('https://workspace.example.test'), contract_index='')
+    with pytest.raises(RuntimeError, match='DATABRICKS_CONTRACT_INDEX'):
+        settings.validate()
