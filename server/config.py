@@ -22,8 +22,11 @@ class Settings:
     contract_index: str = env('DATABRICKS_CONTRACT_INDEX')
     embedding_endpoint: str = env('DATABRICKS_EMBEDDING_ENDPOINT')
     answer_endpoint: str = env('DATABRICKS_ANSWER_ENDPOINT')
+    model_api: str = env('DATABRICKS_MODEL_API', 'gateway')
+    agent_model: str = env('DATABRICKS_AGENT_MODEL', 'system.ai.meta-llama-3-3-70b-instruct')
+    embedding_model: str = env('DATABRICKS_EMBEDDING_MODEL', 'system.ai.gte-large-en')
     genie_agent_id: str = env('DATABRICKS_GENIE_AGENT_ID')
-    rag_top_k: int = field(default_factory=lambda: int(os.getenv('ATLAS_RAG_TOP_K', '5')))
+    rag_top_k: int = field(default_factory=lambda: int(os.getenv('ATLAS_RAG_TOP_K', '20')))
     rag_history_messages: int = field(default_factory=lambda: int(os.getenv('ATLAS_RAG_HISTORY_MESSAGES', '6')))
     agent_timeout_seconds: int = 150
     history_backend: str = env('ATLAS_HISTORY_BACKEND', 'lakebase')
@@ -48,8 +51,9 @@ class Settings:
         return self.auth_mode == 'databricks-app'
 
     def validate(self):
-        resources = (self.genie_agent_id, self.contract_index, self.embedding_endpoint,
-                     self.answer_endpoint, self.lakebase_endpoint)
+        models = ((self.agent_model, self.embedding_model) if self.model_api == 'gateway'
+                  else (self.answer_endpoint, self.embedding_endpoint))
+        resources = (self.genie_agent_id, self.contract_index, *models, self.lakebase_endpoint)
         if any('REPLACE_WITH_' in value for value in resources):
             raise RuntimeError('Replace the target-workspace placeholders in app.yaml before deploying.')
         if self.auth_mode not in ('local', 'databricks-app'):
@@ -59,14 +63,16 @@ class Settings:
         url = urlparse(self.databricks_host)
         if url.scheme != 'https' or not url.hostname or url.username or url.password or url.path not in ('', '/') or url.query or url.fragment:
             raise RuntimeError('DATABRICKS_HOST must be the HTTPS workspace origin.')
-        if not all((self.contract_index, self.embedding_endpoint, self.answer_endpoint)):
-            raise RuntimeError('Configure DATABRICKS_CONTRACT_INDEX, DATABRICKS_EMBEDDING_ENDPOINT and DATABRICKS_ANSWER_ENDPOINT.')
-        if self.genie_agent_id and not re.fullmatch(r'[0-9a-fA-F]{32}', self.genie_agent_id):
+        if not self.contract_index:
+            raise RuntimeError('Configure DATABRICKS_CONTRACT_INDEX.')
+        if self.model_api not in ('gateway', 'serving') or not all(models):
+            raise RuntimeError('Set DATABRICKS_MODEL_API to gateway with AGENT_MODEL/EMBEDDING_MODEL, or serving with ANSWER_ENDPOINT/EMBEDDING_ENDPOINT.')
+        if not re.fullmatch(r'[0-9a-fA-F]{32}', self.genie_agent_id):
             raise RuntimeError('DATABRICKS_GENIE_AGENT_ID must be the 32-character ID from /genie/rooms/<id>.')
         if not re.fullmatch(r'[^.\s/]+\.[^.\s/]+\.[^.\s/]+', self.contract_index):
             raise RuntimeError('DATABRICKS_CONTRACT_INDEX must be a catalog.schema.index name.')
-        if not 1 <= self.rag_top_k <= 10 or not 0 <= self.rag_history_messages <= 20:
-            raise RuntimeError('ATLAS_RAG_TOP_K must be 1-10 and ATLAS_RAG_HISTORY_MESSAGES must be 0-20.')
+        if not 1 <= self.rag_top_k <= 20 or not 0 <= self.rag_history_messages <= 20:
+            raise RuntimeError('ATLAS_RAG_TOP_K must be 1-20 and ATLAS_RAG_HISTORY_MESSAGES must be 0-20.')
         if self.history_backend == 'lakebase':
             self.validate_database()
         elif self.history_backend != 'sqlite' or self.auth_mode != 'local':

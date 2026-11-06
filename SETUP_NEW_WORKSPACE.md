@@ -1,6 +1,6 @@
-# Set up Atlas contract chat in a new Databricks workspace
+# Set up AIA contract chat in a new Databricks workspace
 
-If the app and chat tables already exist, use [UPGRADE_GENIE_AND_RAG.md](UPGRADE_GENIE_AND_RAG.md).
+If the app and chat tables already exist, use [UPGRADE_DEEP_AGENT.md](UPGRADE_DEEP_AGENT.md).
 
 ## 1. Prepare the contract resources
 
@@ -9,26 +9,26 @@ This app requires:
 - An AI Search/Vector Search index supporting HYBRID search with these columns:
   chunk_id, file_name, document_title, vendor_name, section_title, page_start,
   page_end, contextualized_text, citation.
-- An embedding serving endpoint accepting input and returning data[].embedding.
-  It must match the embedding model and vector dimensions used to build the index.
-- An answer serving endpoint accepting messages and returning choices[].message.content.
-  With Genie enabled it must also support function calling; the supplied Llama 3.3
-  70B endpoint supports this API feature where available in the workspace.
+- AI Gateway embedding and chat model services compatible with the supplied notebook.
+  Embeddings must match the model/dimensions used to create the index. Alternatively,
+  explicitly select serving mode as described in UPGRADE_DEEP_AGENT.md.
+- Databricks reranking available for the HYBRID document query.
 - A Lakebase project, branch, compute endpoint and PostgreSQL database.
 
 Creating the app or Lakebase does not create the index, document corpus or models.
-No AI Gateway model service is required.
+Default configuration uses AI Gateway. Serving mode is an explicit alternative.
 
 ## 2. Configure app.yaml
 
-Replace the five REPLACE_WITH_ placeholders:
+Replace the three REPLACE_WITH_ placeholders and verify the model settings:
 
 | Setting | Target workspace value |
 |---|---|
 | DATABRICKS_GENIE_AGENT_ID | The 32-character ID after /genie/rooms/ in the URL |
 | DATABRICKS_CONTRACT_INDEX | catalog.schema.index |
-| DATABRICKS_EMBEDDING_ENDPOINT | Embedding model serving endpoint name |
-| DATABRICKS_ANSWER_ENDPOINT | Chat model serving endpoint name |
+| DATABRICKS_MODEL_API | gateway (default) or serving |
+| DATABRICKS_AGENT_MODEL | AI Gateway chat model identifier |
+| DATABRICKS_EMBEDDING_MODEL | AI Gateway embedding model identifier |
 | LAKEBASE_ENDPOINT | projects/<project>/branches/<branch>/endpoints/<endpoint> |
 
 Keep ATLAS_AUTH_MODE=databricks-app, ATLAS_HISTORY_BACKEND=lakebase, and
@@ -44,7 +44,8 @@ Use the nine-dot app switcher → Databricks Apps → create a custom app.
 Record the app's service principal client/application UUID from Authorization.
 This is not its numeric principal ID or OAuth integration client ID.
 
-In Settings → User authorization, add genie, vector-search and model-serving.
+In Settings → User authorization, add ai-gateway, genie and vector-search.
+Retain model-serving if using serving endpoints.
 Keep the standard identity scopes. A workspace administrator may need to enable
 these scopes. In Resources, attach Database with the intended Lakebase project,
 branch and database, resource key postgres, and Can connect and create.
@@ -90,22 +91,22 @@ root (before creating .env or dependencies), replacing these examples:
 ## 6. Share and verify
 
 Grant users or a group CAN USE on the app. Users also need USE CATALOG, USE SCHEMA
-and SELECT on the index, and CAN QUERY on both model serving endpoints. Retrieval
+and SELECT on the index, and permission to invoke the configured models. Retrieval
 and model calls use the signed-in user's permissions. Lakebase uses the app service
 principal; chat ownership is enforced by the backend.
 Genie users also need CAN RUN on the selected agent and access to its underlying
 data. Its configured warehouse credentials must be valid; Genie can use embedded
 author credentials for compute. Scopes alone do not grant data permissions.
 
-Follow the test steps in UPGRADE_GENIE_AND_RAG.md. New storage starts empty; this
+Follow the test steps in UPGRADE_DEEP_AGENT.md. New storage starts empty; this
 package does not migrate chats from another workspace or copy source documents.
 Existing history migration requires separate user identity mapping.
 
 Troubleshooting:
-- Missing configuration: fill all five app.yaml settings.
+- Missing configuration: fill all resource placeholders and verify model settings.
 - Genie errors: check the ID, Agent-mode API availability, genie scope, and user
   access to the agent, SQL warehouse and its tables.
-- Routing errors: the answer endpoint must support the tools/tool_choice API.
+- Model errors: check gateway/serving mode, model names, user access and scopes.
 - Missing PGHOST/PGUSER: attach the intended database in Resources.
 - Missing tables: initialize the intended database once.
 - Database permission error: check the attached app role and table grants.

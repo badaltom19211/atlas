@@ -5,7 +5,7 @@ export const makeMessage = (role: Message['role'], content: string): Message => 
 export const makeConversation = (title = 'New conversation'): Conversation => ({ id: uuid(), title, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), pinned: false, archived: false, messages: [] });
 
 export function demoAnswer(): string {
-  return 'UI preview only. Connect the published notebook agent to get a real answer.';
+  return 'This is a UI preview. Open the deployed AIA app to get an answer from your data.';
 }
 
 export function readStored(): Conversation[] {

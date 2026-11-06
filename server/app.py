@@ -14,7 +14,7 @@ from sqlalchemy import func, or_, select, update
 from .config import Settings
 from .database import (Comment, Conversation, Message, ToolRun, User, comment_json,
                        conversation_json, create_database, message_json, now)
-from .routed_agent import HIDDEN_TOOLS, RoutedAgent
+from .deep_agent import HIDDEN_TOOLS, DeepContractAgent
 from .databricks_client import DatabricksHTTP
 from .auth import install_auth
 
@@ -77,7 +77,7 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
         raise RuntimeError('Test identity resolvers cannot be used in production.')
     if session_factory is None:
         _, session_factory = create_database(settings)
-    app = FastAPI(title="Atlas API", docs_url="/api/docs" if testing else None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="AIA API", docs_url="/api/docs" if testing else None, redoc_url=None, openapi_url=None)
     app.state.settings = settings
     app.state.session_factory = session_factory
 
@@ -252,7 +252,7 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
             try:
                 async with asyncio.timeout(settings.agent_timeout_seconds):
                     request_model = model or await asyncio.to_thread(
-                        lambda: RoutedAgent(settings, http=DatabricksHTTP(settings, token=session.token)))
+                        lambda: DeepContractAgent(settings, http=DatabricksHTTP(settings, token=session.token)))
                     async for item in request_model.stream(context, body.style):
                         if isinstance(item, dict) and item.get("type") == "tool":
                             tool = item["tool"]

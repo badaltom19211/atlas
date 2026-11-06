@@ -18,6 +18,7 @@ from .test_app import setup, create
 
 def configured():
     return Settings(databricks_host="https://workspace.example.test",
+                    model_api='serving', rag_top_k=5,
                     contract_index="catalog.schema.contracts",
                     embedding_endpoint="fixture-embedding", answer_endpoint="fixture-answer")
 
@@ -228,27 +229,29 @@ def test_cancel_is_not_converted_to_an_answer():
         asyncio.run(run())
 
 
-def test_real_app_factory_passes_each_verified_user_token_to_all_three_requests(setup, monkeypatch):
+def test_real_app_factory_passes_each_verified_user_token_to_the_new_workflow(setup, monkeypatch):
     from types import SimpleNamespace
     from fastapi.testclient import TestClient
     from .app import create_app
+    from .test_deep_agent import Fixture
 
     _, _, factory, _, _ = setup
     tokens = []
+    fixture = Fixture()
     def handler(request):
         tokens.append(request.headers['authorization'])
-        return fixtures(request)
+        return fixture(request)
     def http(settings, token):
         return DatabricksHTTP(settings, token=token, transport=httpx.MockTransport(handler))
     monkeypatch.setattr('server.app.DatabricksHTTP', http)
     async def identity(request):
         subject = request.headers['x-test-user']
         return SimpleNamespace(id=subject, name=subject, email=subject + '@example.test', token='verified-' + subject)
-    app = create_app(configured(), factory, testing=True, identity_resolver=identity)
+    app = create_app(replace(configured(), genie_agent_id='a' * 32), factory, testing=True, identity_resolver=identity)
     with TestClient(app, headers={'x-atlas-request': '1'}) as client:
         for name in ('alice', 'bob'):
             client.headers['x-test-user'] = name
             cid = create(client)
             response = client.post(f'/api/conversations/{cid}/messages', json={'content': 'Notice period?'})
             assert json.loads(response.text.splitlines()[-1])['type'] == 'done'
-    assert tokens == ['Bearer verified-alice'] * 3 + ['Bearer verified-bob'] * 3
+    assert tokens == ['Bearer verified-alice'] * 6 + ['Bearer verified-bob'] * 6

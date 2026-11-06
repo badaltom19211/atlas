@@ -120,7 +120,7 @@ def comment_json(comment):
 def message_json(message):
     custom_outputs = {"sources": []}
     for tool in message.tools:
-        if tool.name in ("contract_rag_tool", "structured_contract_agent") and tool.status == "completed":
+        if tool.name in ("contract_rag_tool", "structured_contract_agent", "deep_contract_agent") and tool.status == "completed":
             try:
                 payload = json.loads(tool.output)
                 metadata = payload.get("custom_outputs") if isinstance(payload, dict) else None
@@ -134,7 +134,7 @@ def message_json(message):
             "comments": [comment_json(c) for c in message.comments],
             "custom_outputs": custom_outputs,
             "tools": [{"id": t.call_id, "name": t.name, "status": t.status, "input": t.input, "output": t.output}
-                      for t in message.tools if t.name not in ("contract_rag_tool", "structured_contract_agent")]}
+                      for t in message.tools if t.name not in ("contract_rag_tool", "structured_contract_agent", "deep_contract_agent")]}
 
 
 def conversation_json(conversation):

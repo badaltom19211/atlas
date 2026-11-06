@@ -26,7 +26,7 @@ type Answer = { user?: Message; assistant: Message };
 
 /** Consume complete NDJSON events across arbitrary UTF-8/network boundaries. */
 export async function readChatResponse(response: Response, onChunk: (text: string) => void, onTool?: (tool: ToolRun) => void): Promise<Answer> {
-  if (!response.body) throw new Error('The notebook agent returned an empty response.');
+  if (!response.body) throw new Error('AIA returned an empty response.');
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let pending = '';
@@ -34,7 +34,7 @@ export async function readChatResponse(response: Response, onChunk: (text: strin
   const event = (line: string) => {
     if (!line.trim()) return;
     const value = JSON.parse(line);
-    if (value.type === 'error') throw new Error(value.message || 'The notebook agent could not complete the response.');
+    if (value.type === 'error') throw new Error(value.message || 'AIA could not complete the response.');
     if (result) throw new Error('Unexpected data after the completed response.');
     if (value.type === 'delta' && typeof value.text === 'string') onChunk(value.text);
     else if (value.type === 'tool' && value.tool) onTool?.(value.tool);

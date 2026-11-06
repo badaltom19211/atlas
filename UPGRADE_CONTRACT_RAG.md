@@ -1,3 +1,5 @@
+> Historical release guide. For the current code, follow [UPGRADE_DEEP_AGENT.md](UPGRADE_DEEP_AGENT.md).
+
 # Upgrade an existing Atlas app to the contract notebook
 
 This guide describes the contract-only release from 2026-11-03. For the current

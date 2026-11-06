@@ -1,39 +1,55 @@
-# Atlas
+# AIA
 
 React + FastAPI contract chat with Databricks authentication and Lakebase history.
-The backend combines Genie for structured contract data with the supplied
-ContractRAGAgent notebook for document clauses. The existing answer endpoint
-selects Genie, document search, or both using function calling. Document search
-embeds a question, retrieves HYBRID search results, and generates a grounded answer.
-No AI Gateway model service is required.
+The backend now runs the supplied deep_agent_v1 workflow: query metadata,
+parallel Genie and hybrid document retrieval with reranking, and a single merged
+answer with clickable source references. The app schedules each data source once;
+there is no second outer source-selection router.
 
-For an existing installation, follow [UPGRADE_GENIE_AND_RAG.md](UPGRADE_GENIE_AND_RAG.md).
-For a fresh workspace, follow [SETUP_NEW_WORKSPACE.md](SETUP_NEW_WORKSPACE.md).
+Start with [UPGRADE_DEEP_AGENT.md](UPGRADE_DEEP_AGENT.md) for existing installations,
+or [SETUP_NEW_WORKSPACE.md](SETUP_NEW_WORKSPACE.md) for a fresh workspace.
+[UPGRADE_AIA_UI.md](UPGRADE_AIA_UI.md) describes branding and conversation search.
 
-The red-and-white UI keeps private conversation history, feedback, notes, saved
-responses, and the signed-in user's name and initial avatar. The composer accepts
-text only. Answers contain natural prose; source metadata is returned separately
-as assistant.custom_outputs and saved in the existing atlas_tool_runs table.
+The red-and-white interface includes private history, feedback, notes, saved
+responses, user name/initial, and title/message search with highlighted results.
+Click [G#]/[D#] references to inspect sources and open available source links.
+Existing chats, database tables and authentication remain compatible.
 
-The notebook logic lives in server/notebook_agent.py, routing in
-server/routed_agent.py, and the Genie API adapter in server/genie.py.
-These run inside the app under the signed-in user's identity.
-Editing the original workspace notebook does not automatically update this code.
-No notebook job or separate MLflow agent deployment is required. The original
-MLflow decorators/model registration are replaced by the app's request handling
-and saved metadata; this port does not create MLflow tracing spans.
+## Runtime
 
-Configuration uses DATABRICKS_GENIE_AGENT_ID, DATABRICKS_CONTRACT_INDEX,
-DATABRICKS_EMBEDDING_ENDPOINT, DATABRICKS_ANSWER_ENDPOINT and LAKEBASE_ENDPOINT.
-Omitting or emptying the Genie ID keeps the previous contract-only workflow.
-Repository configuration is a
-template. Never place credentials in app.yaml or VITE_* variables.
+server/deep_agent.py implements the combined workflow. server/query_metadata.py
+handles the notebook's LLM metadata extraction and follow-up interpretation.
+server/genie.py calls the Genie Agent Responses API; server/citations.py validates
+and bounds references. React renders these references without executing notebook HTML.
+server/app.py uses DeepContractAgent, not the legacy RoutedAgent.
+The old adapter modules remain for compatibility/regression coverage.
 
-For optional local development, install Python 3.11+ and Node.js 20.19+ (or a
-supported newer LTS), install requirements-dev.txt, run npm ci, copy .env.example
-to .env, and configure the target workspace. Authenticate the Databricks CLI
-under the target-workspace profile. Run python -m server.run and npm run dev
-in separate terminals. Do not upload .env, .venv, or node_modules.
+Genie, search, embeddings and answer models use the signed-in user's forwarded
+access token. Lakebase uses the app service principal, with API ownership checks
+for every chat operation. No global notebook token or shared chat session is used.
+Source metadata is saved in the existing atlas_tool_runs table and survives reload.
+
+This is an app-native port with deterministic orchestration, not notebook execution
+or a Deep Agents framework deployment. Editing the workspace notebook does not
+synchronize this code. The ingestion/chunking notebook stays outside the request
+path; the separate ai_extract metadata notebook is not invoked. MLflow tracing
+setup is not ported; the app persists bounded request provenance instead.
+
+## Configuration
+
+The public app.yaml is a template: fill the Genie ID, fully qualified contract
+index name and Lakebase endpoint. It defaults to AI Gateway models matching the
+notebook. Read UPGRADE_DEEP_AGENT.md for scopes, optional serving-endpoint transport,
+user permissions and deployment checks. No tokens belong in app.yaml or VITE_*.
+
+## Local development
+
+Use Python 3.11+ and Node.js 20.19+ (or a supported newer LTS). Install
+requirements-dev.txt, run npm ci, copy .env.example to .env and configure the target
+workspace. Authenticate the Databricks CLI using the target-workspace profile.
+Run python -m server.run and npm run dev in separate terminals. Never upload .env,
+.venv or node_modules. For a UI-only local preview use VITE_APP_MODE=preview.
 
 Checks: python -m pytest server -q, npm test, npm run build.
-The target workspace's resources and permissions need a live test after deployment.
+Automated checks use synthetic responses. Test the real Azure resources and
+permissions after deployment; they are not validated by an offline build.

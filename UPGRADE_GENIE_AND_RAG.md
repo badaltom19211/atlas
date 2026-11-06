@@ -1,3 +1,5 @@
+> Historical release guide. For the current code, follow [UPGRADE_DEEP_AGENT.md](UPGRADE_DEEP_AGENT.md).
+
 # Enable Genie alongside contract document search
 
 Updated 2026-11-04. This release adds structured contract analytics to the

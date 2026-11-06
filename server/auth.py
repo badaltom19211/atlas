@@ -36,7 +36,7 @@ def install_auth(app, settings, database, identity_resolver=None):
         else:
             token = request.headers.get('x-forwarded-access-token', '')
             if not token:
-                raise HTTPException(401, 'Open Atlas through Databricks and allow the requested user authorization scopes.')
+                raise HTTPException(401, 'Open AIA through Databricks and allow the requested user authorization scopes.')
             # Verify the token against the configured workspace. Never identify users
             # from a browser-supplied email/name header or fall back to the app owner.
             workspace = WorkspaceClient(config=Config(host=settings.databricks_host, token=token, auth_type='pat',

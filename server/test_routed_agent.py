@@ -240,29 +240,3 @@ def test_explicit_stop_cancels_remote_genie_after_created_event():
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(GenieAgent(agent.settings, agent.http).answer('Count?'))
     assert calls[-1].endswith('/conversations/c/responses/r/cancel')
-
-
-def test_routed_app_uses_each_verified_user_token(setup, monkeypatch):
-    from types import SimpleNamespace
-    from fastapi.testclient import TestClient
-    from .app import create_app
-    _, _, factory, _, _ = setup
-    tokens = []
-    def handler(request):
-        tokens.append(request.headers['authorization'])
-        if 'tools' in json.loads(request.content):
-            return plan_response('genie')
-        return sse(completed())
-    monkeypatch.setattr('server.app.DatabricksHTTP', lambda settings, token: DatabricksHTTP(
-        settings, token=token, transport=httpx.MockTransport(handler)))
-    async def identity(request):
-        subject = request.headers['x-test-user']
-        return SimpleNamespace(id=subject, name=subject, email=subject + '@example.test', token='verified-' + subject)
-    app = create_app(configuration(), factory, testing=True, identity_resolver=identity)
-    with TestClient(app, headers={'x-atlas-request': '1'}) as client:
-        for name in ('alice', 'bob'):
-            client.headers['x-test-user'] = name
-            cid = create(client)
-            response = client.post(f'/api/conversations/{cid}/messages', json={'content': 'Contract count?'})
-            assert json.loads(response.text.splitlines()[-1])['type'] == 'done'
-    assert tokens == ['Bearer verified-alice'] * 2 + ['Bearer verified-bob'] * 2

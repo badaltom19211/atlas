@@ -1,7 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Instrument+Serif:ital@0;1&display=swap');
-
 :root {
-  font-family: 'DM Sans',sans-serif;
+  font-family: 'Segoe UI',Arial,sans-serif;
   color: var(--text);
   background: var(--surface);
   font-synthesis: none;

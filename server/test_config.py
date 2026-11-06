@@ -7,6 +7,7 @@ from .config import Settings
 
 def configured(host):
     return Settings(auth_mode='databricks-app', databricks_host=host,
+                    model_api='serving', genie_agent_id='a' * 32,
                     lakebase_endpoint='projects/atlas/branches/production/endpoints/primary',
                     pg_host='database.example.test', pg_user='app-principal',
                     contract_index='catalog.schema.contracts',
@@ -36,7 +37,7 @@ def test_invalid_workspace_origins_remain_rejected(host):
 @pytest.mark.parametrize('field,value', [
     ('contract_index', ''), ('embedding_endpoint', ''), ('answer_endpoint', ''),
     ('contract_index', 'REPLACE_WITH_TARGET_CATALOG_SCHEMA_INDEX'),
-    ('contract_index', 'not-qualified'), ('rag_top_k', 0), ('rag_top_k', 11),
+    ('contract_index', 'not-qualified'), ('rag_top_k', 0), ('rag_top_k', 21),
     ('rag_history_messages', -1), ('rag_history_messages', 21),
 ])
 def test_invalid_contract_configuration_is_rejected(field, value):
@@ -58,6 +59,17 @@ def test_invalid_genie_configuration_is_rejected(agent_id):
         replace(configured('https://workspace.example.test'), genie_agent_id=agent_id).validate()
 
 
-def test_genie_is_optional_for_existing_contract_only_installations():
-    configured('https://workspace.example.test').validate()
-    replace(configured('https://workspace.example.test'), genie_agent_id='a' * 32).validate()
+def test_new_workflow_requires_genie_and_accepts_notebook_gateway_models():
+    settings = configured('https://workspace.example.test')
+    with pytest.raises(RuntimeError, match='GENIE_AGENT_ID'):
+        replace(settings, genie_agent_id='').validate()
+    replace(settings, model_api='gateway', embedding_endpoint='', answer_endpoint='', rag_top_k=20).validate()
+
+
+@pytest.mark.parametrize('changes', [
+    {'model_api': 'invalid'}, {'model_api': 'gateway', 'agent_model': ''},
+    {'model_api': 'gateway', 'embedding_model': 'REPLACE_WITH_MODEL'},
+])
+def test_invalid_model_transport_is_rejected(changes):
+    with pytest.raises(RuntimeError):
+        replace(configured('https://workspace.example.test'), **changes).validate()
