@@ -1,6 +1,6 @@
 # Upgrade to the deep_agent_v1 contract workflow
 
-This release runs an app-native port of the supplied deep_agent_v1.ipynb inside
+This release runs an app-native port of the updated deep_agent_v1 (1).ipynb inside
 FastAPI. React, user authentication and the existing Lakebase database remain in
 place. No table migration, notebook job, iframe or separate agent deployment is
 needed. Download the complete latest source; changing app.yaml alone is not enough.
@@ -72,8 +72,15 @@ The backend schedules one Genie request and one document search concurrently.
 The document branch extracts query metadata, adds it to the retrieval text, embeds
 the query, requests HYBRID retrieval with the Databricks reranker and up to 20
 chunks, then writes a cited document summary. One final model call combines the
-structured results and document evidence into a single answer with [G#]/[D#] IDs.
+structured results and document evidence into a single answer with internal [G#]/[D#]
+IDs. These are validated, counted and removed from the displayed answer. Source
+metadata retains which evidence was cited and how often it was cited.
 Basic greetings are handled without querying data.
+
+When enabled, business glossary enrichment runs after follow-up resolution. Its
+terminology context accompanies the question to Genie and document search. Metadata
+extraction still uses the question without glossary definitions, so glossary text
+cannot introduce vendor/date restrictions. Glossary definitions are not sources.
 
 The notebook's required `search_contracts` tool call is enforced directly in code,
 rather than through an open-ended Deep Agents tool loop. The old source-selecting
@@ -90,13 +97,27 @@ when response/conversation IDs are known. The overall request budget remains 150
 
 ## Sources and failure behavior
 
-Click an inline citation to expand its source. Genie references can show the SQL
-query and link to the Genie conversation. Document references show the document,
-section/page metadata when present, and the index's citation link. The supplied
-parsing notebook generates folder links; this app does not invent PDF/page URLs.
-Source links must be HTTPS on the configured workspace. Unavailable links are
-shown as text. SQL/excerpts and reference metadata are bounded; no model reasoning
-is stored or displayed. Reload restores references from the existing tool records.
+New messages show a separate Sources list, matching the updated notebook:
+
+- Genie: unique cited SQL queries whose result tables contain rows. Expand View SQL
+  to see the query; no Genie chat link is shown. A zero in a COUNT result is a row,
+  while a table with only headers is empty. SQL exceeding 4,000 characters is marked
+  as an excerpt. Missing/failed SQL is never replaced with a fabricated query source.
+- Documents: group cited passages by PDF and link, combine their known page ranges,
+  and display the three most cited files. All cited references remain in history;
+  the UI indicates when it shows only the top three. Ties preserve citation order.
+- Known `volumePath` folder links are extended with the actual PDF filename from
+  the index/citation. Existing file links stay intact. File access still depends on
+  Databricks permissions; page labels do not imply automatic PDF page navigation.
+
+The current retrieval uses the notebook's seven columns: chunk_id, document_title,
+section_title, page_start, page_end, contextualized_text, citation. Optional file_name
+and vendor_name fields are used when present, but are not required by this workflow.
+Source links must be HTTPS on the configured workspace. Missing/unsafe links are
+shown as text. No model reasoning is stored or displayed. Reload restores the new
+source display from existing tool records, with no database migration. Older chats
+retain their original inline citations. Unlike the notebook's text cleanup helper,
+the app does not erase statements about failed sources or missing information.
 
 An unavailable source is explicitly reported while the other can still answer.
 Both sources failing returns an error; no results returns a no-evidence answer.
@@ -116,12 +137,42 @@ support of every sentence. Check important answers against their source.
 - Editing the original notebook does not automatically update this deployed code.
   Port changes to the app repository and redeploy.
 
+## Optional business glossary
+
+The notebook imports three separate assets that were not included in the notebook:
+`glossary_loader.py`, `enrichment.py`, and `business_glossary.json`. The adapter calls
+their existing `load_glossary(path)` and `enrich_question(query, glossary)` functions;
+it does not substitute invented definitions or a different matching algorithm.
+
+1. Copy the complete shared business_glossary folder from the workspace into your
+   app deployment source as `app_assets/business_glossary/`. Include any sibling
+   modules needed by those two Python files, and their dependencies in requirements.txt.
+2. In your deployment's app.yaml, enable the commented setting:
+
+   ```yaml
+   - name: ATLAS_GLOSSARY_DIR
+     value: app_assets/business_glossary
+   ```
+
+3. Upload the full app source and redeploy. A workspace notebook path is not
+   automatically an application-local directory; the files must be packaged with
+   the app. The private glossary folder is gitignored, so do not rely on a public
+   GitHub checkout to supply your company's glossary.
+4. Successful enrichment records `glossary_status=completed` and matched terms in
+   the response metadata. Unconfigured enrichment is `disabled`; no matches leaves
+   the question unchanged; import or enrichment failures are `unavailable` and
+   fall back to the question with a safe log message. Redeploy after changing assets.
+
+The actual shared files were not supplied for local verification. Automated tests
+exercise the adapter with synthetic modules; enable and test your real files after
+packaging them. Existing Genie/model/index/Lakebase settings do not need changing.
+
 ## Verify after deployment
 
 1. Ask a structured contract count and compare with the selected Genie agent.
-2. Ask for a clause in a known indexed document. Open its [D#] reference.
-3. Ask a question needing both counts/status and clause text. Check [G#] and [D#]
-   citations, and that contradictory dates are described rather than combined.
+2. Ask for a clause in a known indexed document. Open its PDF link under Sources.
+3. Ask a question needing both counts/status and clause text. Check the SQL and
+   PDF sources, and that contradictory dates are described rather than combined.
 4. Ask a follow-up such as "Also the end date?"; then ask a fresh question about a
    different vendor. Confirm the subject and requested fields are correct.
 5. Ask for absent information; verify no values/dates are invented.

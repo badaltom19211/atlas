@@ -16,5 +16,8 @@ env:
     value: system.ai.gte-large-en
   - name: ATLAS_RAG_TOP_K
     value: '20'
+  # Optional, after copying the shared glossary folder into the app deployment:
+  # - name: ATLAS_GLOSSARY_DIR
+  #   value: app_assets/business_glossary
   - name: LAKEBASE_ENDPOINT
     value: projects/REPLACE_WITH_PROJECT/branches/REPLACE_WITH_BRANCH/endpoints/REPLACE_WITH_ENDPOINT

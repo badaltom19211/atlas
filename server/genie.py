@@ -48,7 +48,7 @@ class GenieAgent:
                             output = current.get('output') or []
                             answer = '\n'.join(extract_text(item.get('content')) for item in output
                                                if item.get('type') == 'message' and item.get('role') == 'assistant').strip()
-                            if not answer or len(answer) > 60000:
+                            if len(answer) > 60000:
                                 raise GenieFailure('Genie returned no usable final answer.')
                             # Never expose reasoning items or raw provider errors.
                             queries = []
@@ -71,6 +71,10 @@ class GenieAgent:
                             if include_evidence:
                                 references, evidence = genie_evidence(output, answer, self.settings, conversation_id)
                                 metadata.update(references=references, evidence=evidence)
+                                if not answer and not references:
+                                    raise GenieFailure('Genie returned no usable final answer or query results.')
+                            elif not answer:
+                                raise GenieFailure('Genie returned no usable final answer.')
                             return answer, metadata
             raise GenieFailure('Genie stream ended before a final answer.')
         finally:
@@ -87,15 +91,33 @@ class GenieAgent:
                     pass
 
 
+def has_result_rows(text):
+    """Only a Markdown table data row counts; COUNT(*) = 0 is still a data row."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for index, line in enumerate(lines[1:], 1):
+        cells = line.strip('|').split('|')
+        if '|' in line and all(re.fullmatch(r'\s*:?-+:?\s*', cell) for cell in cells):
+            return index + 1 < len(lines) and lines[index + 1].startswith('|')
+    return False
+
+
 def genie_evidence(output, answer, settings, conversation_id):
     """Only SQL results and final text become evidence; never reasoning items."""
-    outputs = {item.get('call_id'): item.get('output') for item in output
-               if item.get('type') == 'function_call_output' and item.get('call_id')}
+    # The API pairs outputs by call_id; some payloads expose only <call_id>_output.
+    outputs = {}
+    for item in output:
+        if item.get('type') != 'function_call_output' or item.get('status') in ('failed', 'error'):
+            continue
+        call_id = item.get('call_id')
+        if not call_id and isinstance(item.get('id'), str) and item['id'].endswith('_output'):
+            call_id = item['id'][:-7]
+        if call_id:
+            outputs[call_id] = item.get('output')
     root = settings.databricks_host.rstrip('/') + '/genie/rooms/' + quote(settings.genie_agent_id, safe='')
     link = root + '/chats/' + quote(str(conversation_id), safe='') if conversation_id else root
     sources, blocks = [], []
     for item in output:
-        if item.get('type') != 'function_call' or len(sources) >= 4:
+        if item.get('type') != 'function_call' or item.get('name') != 'execute_sql' or len(sources) >= 4:
             continue
         try:
             args = json.loads(item.get('arguments') or '{}')
@@ -103,7 +125,7 @@ def genie_evidence(output, answer, settings, conversation_id):
             continue
         sql = args.get('sql') or args.get('query') if isinstance(args, dict) else None
         result = outputs.get(item.get('call_id'))
-        if not isinstance(sql, str) or not isinstance(result, str) or not result.strip():
+        if not isinstance(sql, str) or not sql.strip() or not isinstance(result, str) or not result.strip():
             continue
         try:
             parsed = json.loads(result)
@@ -118,11 +140,11 @@ def genie_evidence(output, answer, settings, conversation_id):
         source_link = link + '?gra_focus=' + quote(str(item.get('call_id')), safe='')
         sources.append({'id': identifier, 'kind': 'genie', 'label': title,
                         'url': source_link if len(source_link) <= 1024 else link,
-                        'sql': sql[:2000], 'sql_truncated': len(sql) > 2000,
+                        'sql': sql.strip()[:4000], 'sql_truncated': len(sql.strip()) > 4000,
+                        'has_rows': has_result_rows(result),
                         'tables': [table[:100] for table in tables]})
         blocks.append(f'[{identifier}] {title}\n{result[:8000]}')
     answer = re.sub(r'\\?\[\[\d+\]\([^)]*\)\\?\]', '', answer)
     if not sources:
-        sources.append({'id': 'G1', 'kind': 'genie', 'label': 'Genie response', 'url': link})
-        blocks.append('[G1] ' + answer[:12000])
+        return [], 'Genie returned no SQL-backed results that can be cited. Do not infer structured facts from its summary.'
     return sources, 'Final Genie response (interpret with the query results):\n' + answer[:12000] + '\n\n' + '\n\n'.join(blocks)

@@ -65,14 +65,14 @@ def pages(record):
     return f"p. {start}" + (f"-{end}" if end is not None and end > start else "")
 
 
-def contract_records(result, limit):
+def contract_records(result, limit, required_columns=RETRIEVE_COLUMNS):
     rows = (result.get("result") or {}).get("data_array") or []
     if not isinstance(rows, list):
         raise ValueError("Invalid contract search result.")
     if not rows:
         return []
     columns = [column.get("name") for column in (result.get("manifest") or {}).get("columns", [])]
-    if not set(RETRIEVE_COLUMNS).issubset(columns):
+    if not set(required_columns).issubset(columns):
         raise ValueError("The contract index is missing required columns.")
     records = []
     for row in rows[:limit]:

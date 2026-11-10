@@ -1,9 +1,10 @@
 # AIA
 
 React + FastAPI contract chat with Databricks authentication and Lakebase history.
-The backend now runs the supplied deep_agent_v1 workflow: query metadata,
+The backend now runs the updated deep_agent_v1 workflow: optional shared-glossary
+enrichment, query metadata,
 parallel Genie and hybrid document retrieval with reranking, and a single merged
-answer with clickable source references. The app schedules each data source once;
+answer with SQL and document sources. The app schedules each data source once;
 there is no second outer source-selection router.
 
 Start with [UPGRADE_DEEP_AGENT.md](UPGRADE_DEEP_AGENT.md) for existing installations,
@@ -12,7 +13,9 @@ or [SETUP_NEW_WORKSPACE.md](SETUP_NEW_WORKSPACE.md) for a fresh workspace.
 
 The red-and-white interface includes private history, feedback, notes, saved
 responses, user name/initial, and title/message search with highlighted results.
-Click [G#]/[D#] references to inspect sources and open available source links.
+New answers show cited Genie SQL under View SQL and up to three grouped PDF links
+with known page ranges under Sources. Internal citation tags are validated before
+being removed from the displayed answer. Older chats keep their inline references.
 Existing chats, database tables and authentication remain compatible.
 
 ## Runtime
@@ -21,6 +24,7 @@ server/deep_agent.py implements the combined workflow. server/query_metadata.py
 handles the notebook's LLM metadata extraction and follow-up interpretation.
 server/genie.py calls the Genie Agent Responses API; server/citations.py validates
 and bounds references. React renders these references without executing notebook HTML.
+server/glossary.py adapts the shared glossary files when packaged and configured.
 server/app.py uses DeepContractAgent, not the legacy RoutedAgent.
 The old adapter modules remain for compatibility/regression coverage.
 
@@ -40,7 +44,9 @@ setup is not ported; the app persists bounded request provenance instead.
 The public app.yaml is a template: fill the Genie ID, fully qualified contract
 index name and Lakebase endpoint. It defaults to AI Gateway models matching the
 notebook. Read UPGRADE_DEEP_AGENT.md for scopes, optional serving-endpoint transport,
-user permissions and deployment checks. No tokens belong in app.yaml or VITE_*.
+user permissions and deployment checks. Optional ATLAS_GLOSSARY_DIR points to a
+packaged copy of the team's glossary folder; the notebook alone does not include
+those files. No tokens belong in app.yaml or VITE_*.
 
 ## Local development
 

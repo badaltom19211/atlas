@@ -169,7 +169,7 @@ export default function App() {
               <div className="message-avatar">{m.role === 'assistant' ? <Mark small /> : <span className="avatar">{profileInitial}</span>}</div>
               <div className="message-main">
                 <div className="message-meta"><strong>{m.role === 'assistant' ? 'AIA' : 'You'}</strong><time dateTime={m.createdAt} title={new Date(m.createdAt).toLocaleString()}>{new Date(m.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time></div>
-                <div className="markdown">{m.content ? (m.role === 'user' ? <div className="user-text">{m.content}</div> : <Answer content={m.content} references={m.custom_outputs?.references} />) : <div className="thinking" role="status"><i /><i /><i /><span>Thinking…</span></div>}</div>
+                <div className="markdown">{m.content ? (m.role === 'user' ? <div className="user-text">{m.content}</div> : <Answer content={m.content} references={m.custom_outputs?.references} sourceDisplay={m.custom_outputs?.source_display} />) : <div className="thinking" role="status"><i /><i /><i /><span>Thinking…</span></div>}</div>
                 <ToolDetails tools={m.tools} />
                 {m.status === 'stopped' && <span className="response-status">Response stopped</span>}
                 {m.status === 'error' && <span className="response-status error">Response interrupted. You can try again.</span>}

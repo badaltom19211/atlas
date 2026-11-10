@@ -78,7 +78,10 @@ def test_notebook_workflow_calls_both_once_reranks_and_merges_with_valid_sources
     answer, output = ask(agent(fixture))
     assert output['workflow'] == 'deep_agent_v1'
     assert output['source_status'] == {'genie': 'completed', 'contracts': 'completed'}
-    assert '[G1]' in answer and '[D1]' in answer and 'private internal reasoning' not in json.dumps(output) + answer
+    assert '12 active contracts' in answer and '30 days' in answer
+    assert '[G1]' not in answer and '[D1]' not in answer
+    assert output['source_display'] == 'grouped' and output['glossary_status'] == 'disabled'
+    assert 'private internal reasoning' not in json.dumps(output) + answer
     assert output['query_metadata']['vendor_name'] == ['Fixture Vendor']
     paths = [c[0] for c in fixture.calls]
     assert sum('/genie/' in p for p in paths) == 1
@@ -100,7 +103,7 @@ def test_optional_serving_transport_keeps_the_same_new_workflow():
     model = agent(fixture)
     model.settings = replace(model.settings, model_api='serving')
     answer, _ = ask(model)
-    assert '[D1]' in answer
+    assert '30 days' in answer and '[D1]' not in answer
     assert not any('/ai-gateway/' in path for path, _, _ in fixture.calls)
     assert any('/serving-endpoints/fixture-answer/' in path for path, _, _ in fixture.calls)
 
@@ -217,6 +220,10 @@ def test_actual_api_uses_new_workflow_user_token_and_reloads_private_sources(set
         assert [event['type'] for event in events] == ['delta', 'done']
         saved = events[-1]['assistant']
         assert saved['tools'] == [] and saved['custom_outputs']['workflow'] == 'deep_agent_v1'
+        assert saved['custom_outputs']['source_display'] == 'grouped'
+        assert saved['custom_outputs']['references'][0]['has_rows'] is True
+        assert saved['custom_outputs']['references'][0]['citation_count'] == 1
+        assert '[G1]' not in saved['content'] and '[D1]' not in saved['content']
         assert alice.get('/api/bootstrap').json()['conversations'][0]['messages'][-1] == saved
         assert all(token == 'Bearer alice-token' for _, _, token in fixture.calls)
         assert alice.get('/api/bootstrap', headers={'x-test-user': 'bob'}).json()['conversations'] == []

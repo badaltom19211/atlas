@@ -7,7 +7,7 @@ If the app and chat tables already exist, use [UPGRADE_DEEP_AGENT.md](UPGRADE_DE
 This app requires:
 - A Genie Agent configured with the desired structured contract tables and SQL warehouse.
 - An AI Search/Vector Search index supporting HYBRID search with these columns:
-  chunk_id, file_name, document_title, vendor_name, section_title, page_start,
+  chunk_id, document_title, section_title, page_start,
   page_end, contextualized_text, citation.
 - AI Gateway embedding and chat model services compatible with the supplied notebook.
   Embeddings must match the model/dimensions used to create the index. Alternatively,

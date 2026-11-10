@@ -26,6 +26,7 @@ class Settings:
     agent_model: str = env('DATABRICKS_AGENT_MODEL', 'system.ai.meta-llama-3-3-70b-instruct')
     embedding_model: str = env('DATABRICKS_EMBEDDING_MODEL', 'system.ai.gte-large-en')
     genie_agent_id: str = env('DATABRICKS_GENIE_AGENT_ID')
+    glossary_dir: str = env('ATLAS_GLOSSARY_DIR')
     rag_top_k: int = field(default_factory=lambda: int(os.getenv('ATLAS_RAG_TOP_K', '20')))
     rag_history_messages: int = field(default_factory=lambda: int(os.getenv('ATLAS_RAG_HISTORY_MESSAGES', '6')))
     agent_timeout_seconds: int = 150
