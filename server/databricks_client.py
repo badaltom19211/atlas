@@ -2,6 +2,8 @@
 import asyncio
 import httpx
 
+from .databricks_errors import check_databricks_response
+
 
 def workspace_client(settings):
     from databricks.sdk import WorkspaceClient
@@ -40,7 +42,7 @@ class DatabricksHTTP:
     async def post(self, path, payload):
         async with self.client() as client:
             response = await client.post(path, headers=await self.headers(), json=payload)
-            response.raise_for_status()
+            check_databricks_response(response, payload)
             return response.json()
 
 

@@ -5,6 +5,7 @@ import re
 from urllib.parse import quote
 
 from .databricks_client import sse_events
+from .databricks_errors import check_databricks_response
 from .notebook_agent import extract_text
 
 
@@ -29,7 +30,7 @@ class GenieAgent:
                 headers = await self.http.headers()
                 headers['Accept'] = 'text/event-stream'
                 async with client.stream('POST', path, headers=headers, json=payload) as response:
-                    response.raise_for_status()
+                    check_databricks_response(response)
                     async for data in sse_events(response.aiter_lines()):
                         if data == '[DONE]':
                             break

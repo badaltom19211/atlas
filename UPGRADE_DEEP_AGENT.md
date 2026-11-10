@@ -131,6 +131,29 @@ support of every sentence. Check important answers against their source.
 Local automated tests use synthetic HTTP responses. They cannot establish live
 Azure permissions, model quality, reranker availability or index freshness.
 
+## If a response fails after adding scopes
+
+Confirm the saved scopes on the existing app's Authorization page. To test with a
+fresh browser session, open Edge InPrivate inside the approved company network,
+sign in to the workspace, then open the app and approve any access prompt. A missing
+prompt alone does not prove which scopes the forwarded token contains. Adding a
+scope does not grant the user permission to the configured model, index or Genie.
+
+The chat now keeps a safe error naming the failing API and HTTP status. App logs
+also identify its scope and configuration key, for example:
+
+```text
+Databricks request failed: operation=AI Gateway chat model; HTTP=403; scope=ai-gateway; setting=DATABRICKS_AGENT_MODEL
+```
+
+Check the named service: 401 indicates authentication, 403 denied access (scope,
+consent or resource permissions), 404 an unavailable resource/API or incorrect
+configuration, and 429 throttling. Do not switch to an app principal to bypass a
+user's denial. The diagnostic does not print credentials, provider bodies, prompts
+or resource values. An HTTP 200 for `/messages` only means the response stream
+opened; its final `error` or `done` event determines the outcome. Re-upload and
+redeploy this release to receive these diagnostics; no database change is needed.
+
 References:
 - [Genie response API](https://docs.databricks.com/api/genie/v1/agent-mode-create-response)
 - [Vector index query and reranker](https://docs.databricks.com/api/vector-search/v1/query-vector-index)

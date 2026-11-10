@@ -16,6 +16,7 @@ from .database import (Comment, Conversation, Message, ToolRun, User, comment_js
                        conversation_json, create_database, message_json, now)
 from .deep_agent import HIDDEN_TOOLS, DeepContractAgent
 from .databricks_client import DatabricksHTTP
+from .databricks_errors import public_failure
 from .auth import install_auth
 
 logger = logging.getLogger("atlas")
@@ -273,7 +274,7 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
                 raise
             except Exception as error:
                 status = "error"
-                failure = "The assistant could not complete the response. Check Databricks access and try again."
+                failure = public_failure(error)
                 logger.warning("Model generation failed (%s)", type(error).__name__)
             finally:
                 # Persist completed, partial, and failed answers; never discard an existing version.

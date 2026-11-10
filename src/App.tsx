@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { ArrowDown, ArrowRight, ArrowUp, Bookmark, CheckCheck, ChevronRight, CircleHelp, Copy, History, LayoutGrid, LogOut, Menu, MessageCircle, MessageSquare, Monitor, PanelLeftClose, PenLine, Pin, Plus, Search, Settings2, ShieldCheck, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X, RefreshCw } from 'lucide-react';
 import Answer from './Answer';
-import { api, isLive } from './api';
+import { api, failedResponseContent, isLive } from './api';
 import { ToolDetails } from './ToolDetails';
 import { ConversationHistory, ConversationSearch, searchShortcut } from './ConversationList';
 import { demoAnswer, makeConversation, makeMessage, readStored, uuid } from './demo';
@@ -125,7 +125,7 @@ export default function App() {
       }
     } catch (e) {
       const stopped = e instanceof DOMException && e.name === 'AbortError';
-      if (conversation && assistant) update(conversation.id, c => ({ ...c, messages: c.messages.map(m => m.id === assistant!.id ? { ...m, status: stopped ? 'stopped' : 'error', tools: m.tools?.map(t => t.status === 'running' ? { ...t, status: stopped ? 'stopped' : 'error' } : t), content: m.content || (stopped ? 'Response stopped.' : 'The response could not be completed. Please try again.') } : m) }));
+      if (conversation && assistant) update(conversation.id, c => ({ ...c, messages: c.messages.map(m => m.id === assistant!.id ? { ...m, status: stopped ? 'stopped' : 'error', tools: m.tools?.map(t => t.status === 'running' ? { ...t, status: stopped ? 'stopped' : 'error' } : t), content: m.content || failedResponseContent(e) } : m) }));
       if (!stopped) notify(e instanceof Error ? e.message : 'Unable to send your message.');
     } finally { setBusyId(null); lock.current = false; abortRef.current = null; }
   };

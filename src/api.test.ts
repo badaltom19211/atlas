@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, readChatResponse } from './api';
+import { api, ChatResponseError, failedResponseContent, readChatResponse } from './api';
 import { makeMessage } from './demo';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -21,6 +21,15 @@ describe('FastAPI chat integration', () => {
   it('rejects truncated responses and explicit errors', async () => {
     await expect(readChatResponse(ndjson([{ type: 'delta', text: 'Partial' }]), vi.fn())).rejects.toThrow('before the response was complete');
     await expect(readChatResponse(ndjson([{ type: 'error', message: 'Tool failed' }]), vi.fn())).rejects.toThrow('Tool failed');
+  });
+  it('keeps safe backend diagnostics in the chat bubble instead of a temporary toast only', async () => {
+    const message = 'AI Gateway chat model failed (HTTP 403). Check the app scope and your access.';
+    let failure: unknown;
+    try { await readChatResponse(ndjson([{ type: 'error', message }]), vi.fn()); } catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(ChatResponseError);
+    expect(failedResponseContent(failure)).toBe(message);
+    expect(failedResponseContent(new Error('private transport detail'))).not.toContain('private transport detail');
+    expect(failedResponseContent(new DOMException('Stopped', 'AbortError'))).toBe('Response stopped.');
   });
   it('preserves contract metadata without putting it in the visible answer', async () => {
     const chunk = vi.fn();

@@ -12,6 +12,7 @@ from datetime import date
 from urllib.parse import quote
 
 from .citations import check_citations, document_sources
+from .databricks_errors import ContractSourcesUnavailable
 from .genie import GenieAgent
 from .notebook_agent import ContractRAGAgent, RETRIEVE_COLUMNS, contract_records, extract_text
 from .query_metadata import (FOLLOW_UP_PROMPT, METADATA_PROMPT, REQUESTED, clean_metadata,
@@ -163,7 +164,7 @@ class DeepContractAgent(ContractRAGAgent):
             except Exception as error:
                 status = getattr(getattr(error, 'response', None), 'status_code', None)
                 logger.warning('Contract %s lookup failed (%s, HTTP %s)', source, type(error).__name__, status)
-                return {'ok': False, 'references': []}
+                return {'ok': False, 'references': [], 'error': error}
         # Exactly one invocation per source. Cancellation propagates to both.
         async with asyncio.TaskGroup() as group:
             genie_task = group.create_task(call('genie'))
@@ -183,7 +184,7 @@ class DeepContractAgent(ContractRAGAgent):
             query, metadata, follow = await self.resolve_followup(question, history)
         genie, rag = await self.search_contracts(query, metadata)
         if not genie['ok'] and not rag['ok']:
-            raise RuntimeError('Neither contract source is available.')
+            raise ContractSourcesUnavailable([genie['error'], rag['error']])
         sources = genie['references'] + rag['references']
         structured = genie.get('evidence', 'Structured contract lookup is unavailable. Do not infer its answer.')
         documents = (rag.get('answer', '') + '\nOriginal passages:\n' + rag.get('context', '')) if rag['ok'] else \
