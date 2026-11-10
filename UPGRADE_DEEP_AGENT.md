@@ -90,7 +90,7 @@ Deep Agents framework, IPython display code, or MLflow experiment setup/autologg
 Bounded provenance and source status are persisted in atlas_tool_runs instead.
 
 Genie, models and document search use the verified signed-in user's forwarded token.
-Lakebase uses the app service principal; API ownership checks protect each user's
+Lakebase and startup glossary downloads use the app service principal; API ownership checks protect each user's
 chats. Each request starts a fresh Genie conversation; the app's history resolves
 follow-ups. Stop propagates to both branches and attempts remote Genie cancellation
 when response/conversation IDs are known. The overall request budget remains 150s.
@@ -135,7 +135,33 @@ support of every sentence. Check important answers against their source.
   This release uses the LLM extractor from deep_agent_v1, including follow-up
   handling. Metadata enriches query text; it is not a strict retrieval filter.
 - Editing the original notebook does not automatically update this deployed code.
-  Port changes to the app repository and redeploy.
+  Port workflow changes to the app repository and redeploy. The optional remote
+  glossary folder is refreshed separately at each app process startup.
+
+## Calling the notebook's functions directly
+
+The browser sends a chat request to FastAPI. The backend imports DeepContractAgent
+from server/deep_agent.py and directly calls its stream/answer methods in the same
+Python process. It does not start a notebook job or execute .ipynb cells per message.
+
+This is an adapted implementation of the notebook, not a live import of the whole
+notebook. The main function mapping is:
+
+| Notebook | App implementation |
+| --- | --- |
+| chat / ask | DeepContractAgent.answer with owner-checked message history |
+| enrich_user_query | GlossaryEnricher.question calling the team's enrich_question |
+| search_genie_and_rag / search_contracts | DeepContractAgent.search_contracts |
+| query_genie | GenieAgent.answer using the configured Genie ID |
+| metadata_aware_rag / query_rag | DeepContractAgent.documents / retrieve |
+| render_citations | server/citations.py plus React's grouped Sources display |
+
+The separate glossary functions ARE imported unchanged from the configured files:
+load_glossary(path) at startup and enrich_question(query, glossary) per question.
+For both a notebook and the app to always use identical workflow code, the team
+would need to extract that workflow into a shared Python module/package with
+explicit credentials/history arguments. The current app does not dynamically load
+the entire notebook, its global token, CHAT_SESSIONS, or its MLflow setup.
 
 ## Optional business glossary
 
@@ -144,28 +170,60 @@ The notebook imports three separate assets that were not included in the noteboo
 their existing `load_glossary(path)` and `enrich_question(query, glossary)` functions;
 it does not substitute invented definitions or a different matching algorithm.
 
-1. Copy the complete shared business_glossary folder from the workspace into your
-   app deployment source as `app_assets/business_glossary/`. Include any sibling
-   modules needed by those two Python files, and their dependencies in requirements.txt.
-2. In your deployment's app.yaml, enable the commented setting:
+Use Workspace loading to avoid manual copying:
+
+1. Locate the existing business_glossary folder used by GLOSSARY_DIR in the notebook.
+   It must contain actual Workspace files named glossary_loader.py, enrichment.py,
+   and business_glossary.json. Notebook objects are not imported as Python modules.
+2. On the App's Authorization page, copy its service principal identity. On the
+   glossary folder's sharing/permissions dialog, grant that principal read access
+   (Can view / CAN_READ). These are shared application assets; no extra user OAuth
+   scope is needed for their app-principal download. Keep existing user scopes and
+   data permissions for Genie, Vector Search and models.
+3. Add this setting to app.yaml, using your actual folder path from the notebook:
 
    ```yaml
-   - name: ATLAS_GLOSSARY_DIR
-     value: app_assets/business_glossary
+   - name: ATLAS_GLOSSARY_WORKSPACE_DIR
+     value: /Workspace/Users/OWNER/YOUR_PROJECT/business_glossary
    ```
 
-3. Upload the full app source and redeploy. A workspace notebook path is not
-   automatically an application-local directory; the files must be packaged with
-   the app. The private glossary folder is gitignored, so do not rely on a public
-   GitHub checkout to supply your company's glossary.
-4. Successful enrichment records `glossary_status=completed` and matched terms in
-   the response metadata. Unconfigured enrichment is `disabled`; no matches leaves
-   the question unchanged; import or enrichment failures are `unavailable` and
-   fall back to the question with a safe log message. Redeploy after changing assets.
+   Remove/comment ATLAS_GLOSSARY_DIR if set. The app rejects configuring both.
+   /Workspace/Users/... is normalized to /Users/... for the Workspace API; /Shared/...
+   is also supported. This path is a folder, not a notebook URL.
+4. Deploy the updated app source. Startup authenticates with the app's injected
+   OAuth client credentials, downloads the folder's .py and .json files (including
+   nested packages) into a private temporary directory, and imports only after all
+   downloads succeed. Third-party dependencies still belong in requirements.txt;
+   the loader never automatically installs packages from the remote folder.
+5. App logs show `Workspace glossary ready (revision=..., files=...)` on success.
+   A question with a matching term records glossary_status=completed and matched
+   glossary_terms in response/history metadata. No match gives no_matches.
+6. After editing the shared glossary, stop/start the app to start a fresh process.
+   A running process keeps its startup version; it does not download on every chat.
+   No app source upload is required for glossary-only changes. Changes to the main
+   notebook workflow or Python dependencies still require an app update/deployment.
+
+Treat write access to that folder as permission to change the app's Python code.
+The path comes only from deployment configuration, never from a chat request. The
+loader allows at most 64 Python/JSON files, 128 entries and 5 path levels; files are
+limited to 5 MB each and 20 MB total. Downloads have a startup budget plus bounded
+SDK request timeouts. Failed/missing downloads are discarded before importing;
+there is no fallback to a previous snapshot or a user's credentials. On any download
+or import failure, glossary_status is unavailable, a safe diagnostic is logged, and
+chat proceeds with the original question. Correct access/dependencies and restart
+to retry. Downloads are temporary and are removed at normal app shutdown.
+
+For offline/package-based deployment, the existing alternative is still supported:
+copy the complete folder into app_assets/business_glossary and configure only
+ATLAS_GLOSSARY_DIR=app_assets/business_glossary. That private folder is gitignored.
+With neither setting, enrichment is disabled. Glossary definitions interpret terms;
+they are not presented as SQL or document evidence.
 
 The actual shared files were not supplied for local verification. Automated tests
-exercise the adapter with synthetic modules; enable and test your real files after
-packaging them. Existing Genie/model/index/Lakebase settings do not need changing.
+exercise Workspace downloads and the imported functions with synthetic modules,
+including startup refresh, failures, dependencies and separate user tokens. Enable
+the setting and verify the real folder/dependencies in your workspace. Existing
+Genie/model/index/Lakebase settings and chat tables do not need changing.
 
 ## Verify after deployment
 
@@ -209,4 +267,5 @@ References:
 - [Genie response API](https://docs.databricks.com/api/genie/v1/agent-mode-create-response)
 - [Vector index query and reranker](https://docs.databricks.com/api/vector-search/v1/query-vector-index)
 - [App authentication](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/databricks-apps/auth)
+- [Workspace SDK file download](https://databricks-sdk-py.readthedocs.io/en/latest/workspace/workspace/workspace.html)
 - [Query embedding models](https://learn.microsoft.com/en-us/azure/databricks/machine-learning/model-serving/query-embedding-models)

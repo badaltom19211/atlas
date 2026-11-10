@@ -24,18 +24,20 @@ server/deep_agent.py implements the combined workflow. server/query_metadata.py
 handles the notebook's LLM metadata extraction and follow-up interpretation.
 server/genie.py calls the Genie Agent Responses API; server/citations.py validates
 and bounds references. React renders these references without executing notebook HTML.
-server/glossary.py adapts the shared glossary files when packaged and configured.
+server/glossary_assets.py fetches the configured shared Workspace folder at startup;
+server/glossary.py calls its existing load_glossary and enrich_question functions.
 server/app.py uses DeepContractAgent, not the legacy RoutedAgent.
 The old adapter modules remain for compatibility/regression coverage.
 
 Genie, search, embeddings and answer models use the signed-in user's forwarded
-access token. Lakebase uses the app service principal, with API ownership checks
+access token. Lakebase and shared glossary downloads use the app service principal, with API ownership checks
 for every chat operation. No global notebook token or shared chat session is used.
 Source metadata is saved in the existing atlas_tool_runs table and survives reload.
 
 This is an app-native port with deterministic orchestration, not notebook execution
 or a Deep Agents framework deployment. Editing the workspace notebook does not
-synchronize this code. The ingestion/chunking notebook stays outside the request
+synchronize this code. Shared glossary files are refreshed on app process startup
+when Workspace loading is enabled. The ingestion/chunking notebook stays outside the request
 path; the separate ai_extract metadata notebook is not invoked. MLflow tracing
 setup is not ported; the app persists bounded request provenance instead.
 
@@ -44,9 +46,11 @@ setup is not ported; the app persists bounded request provenance instead.
 The public app.yaml is a template: fill the Genie ID, fully qualified contract
 index name and Lakebase endpoint. It defaults to AI Gateway models matching the
 notebook. Read UPGRADE_DEEP_AGENT.md for scopes, optional serving-endpoint transport,
-user permissions and deployment checks. Optional ATLAS_GLOSSARY_DIR points to a
-packaged copy of the team's glossary folder; the notebook alone does not include
-those files. No tokens belong in app.yaml or VITE_*.
+user permissions and deployment checks. Optional ATLAS_GLOSSARY_WORKSPACE_DIR points
+to the team's existing Workspace glossary folder. Grant the app service principal
+read access there; startup fetches its Python/JSON files, so no manual copying is
+needed. Alternatively, ATLAS_GLOSSARY_DIR points to a packaged app-local folder.
+Set only one. No tokens belong in app.yaml or VITE_*.
 
 ## Local development
 

@@ -27,6 +27,7 @@ class Settings:
     embedding_model: str = env('DATABRICKS_EMBEDDING_MODEL', 'system.ai.gte-large-en')
     genie_agent_id: str = env('DATABRICKS_GENIE_AGENT_ID')
     glossary_dir: str = env('ATLAS_GLOSSARY_DIR')
+    glossary_workspace_dir: str = env('ATLAS_GLOSSARY_WORKSPACE_DIR')
     rag_top_k: int = field(default_factory=lambda: int(os.getenv('ATLAS_RAG_TOP_K', '20')))
     rag_history_messages: int = field(default_factory=lambda: int(os.getenv('ATLAS_RAG_HISTORY_MESSAGES', '6')))
     agent_timeout_seconds: int = 150
@@ -52,6 +53,11 @@ class Settings:
         return self.auth_mode == 'databricks-app'
 
     def validate(self):
+        if self.glossary_dir and self.glossary_workspace_dir:
+            raise RuntimeError('Set only one of ATLAS_GLOSSARY_DIR or ATLAS_GLOSSARY_WORKSPACE_DIR.')
+        if self.glossary_workspace_dir:
+            from .glossary_assets import workspace_folder
+            workspace_folder(self.glossary_workspace_dir)
         models = ((self.agent_model, self.embedding_model) if self.model_api == 'gateway'
                   else (self.answer_endpoint, self.embedding_endpoint))
         resources = (self.genie_agent_id, self.contract_index, *models, self.lakebase_endpoint)

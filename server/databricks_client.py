@@ -13,6 +13,16 @@ def workspace_client(settings):
                            http_timeout_seconds=15, retry_timeout_seconds=20))
 
 
+def app_workspace_client(settings):
+    """Shared assets use the hosted app's injected OAuth credentials, never a user token."""
+    if settings.auth_mode == 'local':
+        return workspace_client(settings)
+    from databricks.sdk import WorkspaceClient
+    from databricks.sdk.core import Config
+    return WorkspaceClient(config=Config(host=settings.databricks_host, auth_type='oauth-m2m',
+                           http_timeout_seconds=15, retry_timeout_seconds=20))
+
+
 class DatabricksHTTP:
     def __init__(self, settings, workspace=None, transport=None, token=None):
         self.settings = settings

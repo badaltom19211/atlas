@@ -16,7 +16,11 @@ env:
     value: system.ai.gte-large-en
   - name: ATLAS_RAG_TOP_K
     value: '20'
-  # Optional, after copying the shared glossary folder into the app deployment:
+  # Optional: fetch shared glossary files at startup using the app service principal.
+  # Set this to your existing workspace folder; do not enable both glossary settings.
+  # - name: ATLAS_GLOSSARY_WORKSPACE_DIR
+  #   value: /Workspace/Shared/business_glossary
+  # Alternative: a folder already packaged with the app deployment.
   # - name: ATLAS_GLOSSARY_DIR
   #   value: app_assets/business_glossary
   - name: LAKEBASE_ENDPOINT

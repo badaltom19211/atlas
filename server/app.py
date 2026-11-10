@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from contextlib import asynccontextmanager
 from datetime import timedelta, timezone
 from pathlib import Path
 from typing import Literal
@@ -17,6 +18,7 @@ from .database import (Comment, Conversation, Message, ToolRun, User, comment_js
 from .deep_agent import HIDDEN_TOOLS, DeepContractAgent
 from .databricks_client import DatabricksHTTP
 from .databricks_errors import public_failure
+from .glossary_assets import load_glossary_runtime
 from .auth import install_auth
 
 logger = logging.getLogger("atlas")
@@ -78,7 +80,17 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
         raise RuntimeError('Test identity resolvers cannot be used in production.')
     if session_factory is None:
         _, session_factory = create_database(settings)
-    app = FastAPI(title="AIA API", docs_url="/api/docs" if testing else None, redoc_url=None, openapi_url=None)
+    @asynccontextmanager
+    async def lifespan(app):
+        runtime = await asyncio.to_thread(load_glossary_runtime, settings)
+        app.state.glossary = runtime.enricher
+        try:
+            yield
+        finally:
+            await asyncio.to_thread(runtime.close)
+
+    app = FastAPI(title="AIA API", docs_url="/api/docs" if testing else None, redoc_url=None,
+                  openapi_url=None, lifespan=lifespan)
     app.state.settings = settings
     app.state.session_factory = session_factory
 
@@ -253,7 +265,8 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
             try:
                 async with asyncio.timeout(settings.agent_timeout_seconds):
                     request_model = model or await asyncio.to_thread(
-                        lambda: DeepContractAgent(settings, http=DatabricksHTTP(settings, token=session.token)))
+                        lambda: DeepContractAgent(settings, http=DatabricksHTTP(settings, token=session.token),
+                                                  glossary=app.state.glossary))
                     async for item in request_model.stream(context, body.style):
                         if isinstance(item, dict) and item.get("type") == "tool":
                             tool = item["tool"]
