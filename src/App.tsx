@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { ArrowDown, ArrowRight, ArrowUp, CheckCheck, ChevronRight, CircleHelp, Copy, History, LogOut, Menu, MessageCircle, MessageSquare, Monitor, PanelLeftClose, PenLine, Plus, Search, ShieldCheck, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, Bookmark, CheckCheck, ChevronRight, CircleHelp, Copy, History, LogOut, Menu, MessageCircle, MessageSquare, Monitor, PanelLeftClose, PenLine, Plus, Search, ShieldCheck, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react';
 import Answer from './Answer';
 import { api, failedResponseContent, isLive } from './api';
 import { ToolDetails } from './ToolDetails';
@@ -8,7 +8,7 @@ import { ConversationHistory, ConversationSearch, ChatActions, searchShortcut } 
 import { demoAnswer, makeConversation, makeMessage, readStored, uuid } from './demo';
 import type { AppSession, Conversation, Message, User } from './types';
 
-type View = 'home' | 'chat' | 'history';
+type View = 'home' | 'chat' | 'history' | 'library';
 type Modal = 'search' | 'settings' | 'delete' | 'rename' | 'about' | null;
 
 function Mark({ small = false }: { small?: boolean }) { return <span className={`brand-mark ${small ? 'small' : ''}`} aria-hidden="true">AIA</span>; }
@@ -67,6 +67,7 @@ export default function App() {
   const active = conversations.find(c => c.id === activeId);
   const noteMessage = conversations.find(c => c.id === commentTarget?.cid)?.messages.find(m => m.id === commentTarget?.mid);
   const visible = conversations.filter(c => !c.archived).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const saved = conversations.flatMap(c => c.messages.filter(m => m.saved).map(m => ({ c, m })));
   const notify = (message: string) => setToast(message);
   const safe = async (work: () => Promise<void>) => { try { await work(); } catch (e) { notify(e instanceof Error ? e.message : 'Something went wrong. Please try again.'); } };
   const update = (id: string, fn: (c: Conversation) => Conversation) => setConversations(cs => cs.map(c => c.id === id ? fn(c) : c));
@@ -152,11 +153,11 @@ export default function App() {
     <aside className={`sidebar ${sidebar ? 'is-open' : ''}`}>
       <div className="brand-row"><button className="brand" onClick={newChat}><span className="wordmark">AIA</span></button><IconButton label="Close navigation" onClick={() => { setSidebar(false); if (window.innerWidth > 760) setNavCollapsed(true); }}><PanelLeftClose size={17} /></IconButton></div>
       <button className="new-chat" onClick={newChat}><Plus size={17} /><span>New conversation</span><span className="new-shortcut">↗</span></button>
-      <nav className="main-nav" aria-label="Main navigation"><button onClick={() => { setSidebar(false); setModal('search'); }}><Search size={18} /><span>Search</span><kbd>{searchShortcut}</kbd></button><button className={view === 'history' ? 'selected' : ''} onClick={() => { setView('history'); setSidebar(false); setCommentTarget(null); }}><History size={18} /><span>Conversations</span><span className="nav-count">{visible.length}</span></button></nav>
+      <nav className="main-nav" aria-label="Main navigation"><button onClick={() => { setSidebar(false); setModal('search'); }}><Search size={18} /><span>Search</span><kbd>{searchShortcut}</kbd></button><button className={view === 'history' ? 'selected' : ''} onClick={() => { setView('history'); setSidebar(false); setCommentTarget(null); }}><History size={18} /><span>Conversations</span><span className="nav-count">{visible.length}</span></button><button className={view === 'library' ? 'selected' : ''} onClick={() => { setView('library'); setSidebar(false); setCommentTarget(null); }}><Bookmark size={18} /><span>Saved responses</span>{saved.length > 0 && <span className="nav-count">{saved.length}</span>}</button></nav>
       <div className="sidebar-conversations"><div className="sidebar-section-title"><span>CONVERSATIONS</span></div>{visible.map(c => <div className={`sidebar-chat ${activeId === c.id && view === 'chat' ? 'selected' : ''}`} key={c.id}><button className="history-link" onClick={() => openConversation(c.id)}><MessageSquare size={15} /><span>{c.title}</span></button><ChatActions title={c.title} disabled={busyId === c.id} onRename={() => renameChat(c.id)} onDelete={() => deleteChat(c.id)} /></div>)}</div>
     </aside>
     <main className="main-shell">
-      <header className="topbar"><div className="breadcrumb"><button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => { setNavCollapsed(false); setSidebar(true); }}><Menu size={20} /></button><span className="workspace-name">AIA</span><ChevronRight size={13} /><strong>{view === 'home' ? 'New conversation' : view === 'chat' ? (active?.title || 'Conversation') : 'Conversations'}</strong></div><div className="topbar-right"><IconButton label="About AIA" onClick={() => setModal('about')}><CircleHelp size={18} /></IconButton><span className="topbar-divider" /><button className="header-profile" onClick={openSettings} aria-label={`Account settings for ${profileName}`} title={profileName}><span className="header-profile-name">{profileName}</span><span className="avatar" aria-hidden="true">{profileInitial}</span></button></div></header>
+      <header className="topbar"><div className="breadcrumb"><button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => { setNavCollapsed(false); setSidebar(true); }}><Menu size={20} /></button><span className="workspace-name">AIA</span><ChevronRight size={13} /><strong>{view === 'home' ? 'New conversation' : view === 'chat' ? (active?.title || 'Conversation') : view === 'history' ? 'Conversations' : 'Saved responses'}</strong></div><div className="topbar-right"><IconButton label="About AIA" onClick={() => setModal('about')}><CircleHelp size={18} /></IconButton><span className="topbar-divider" /><button className="header-profile" onClick={openSettings} aria-label={`Account settings for ${profileName}`} title={profileName}><span className="header-profile-name">{profileName}</span><span className="avatar" aria-hidden="true">{profileInitial}</span></button></div></header>
       <div className={`content-layout ${commentTarget ? 'with-comments' : ''}`}><div className="main-content">
         {view === 'home' && <div className="home-content">{composer}</div>}
         {view === 'chat' && active && <>
@@ -181,6 +182,7 @@ export default function App() {
                   <IconButton label="Unhelpful response" active={m.feedback === 'down'} onClick={() => void safe(() => setMessage(active.id, m, { feedback: m.feedback === 'down' ? null : 'down' }))}><ThumbsDown size={16} /></IconButton>
                   <span className="action-separator" />
                   <button className={`comment-action ${commentTarget?.mid === m.id ? 'active' : ''}`} onClick={() => { setCommentTarget({ cid: active.id, mid: m.id }); setNote(''); }}><MessageCircle size={16} />{m.comments.length ? `${m.comments.length} note${m.comments.length > 1 ? 's' : ''}` : 'Add note'}</button>
+                  <IconButton label={m.saved ? 'Unsave response' : 'Save response'} active={m.saved} onClick={() => void safe(() => setMessage(active.id, m, { saved: !m.saved }))}><Bookmark size={16} /></IconButton>
                 </div>}
               </div>
             </article>)}<div ref={bottomRef} /></div></div>
@@ -189,6 +191,7 @@ export default function App() {
         </>}
         {view === 'history' && <ConversationHistory conversations={conversations} onOpen={openConversation} onNew={newChat}
           onPatch={(id, patch) => void safe(() => patchConversation(id, patch))} />}
+        {view === 'library' && <div className="collection-page"><h1>Saved responses</h1>{saved.length ? <div className="saved-grid">{saved.map(({ c, m }) => <article className="saved-card" key={m.id}><div><Mark small /><IconButton label="Unsave response" active onClick={() => void safe(() => setMessage(c.id, m, { saved: false }))}><Bookmark size={16} /></IconButton></div><h2>{c.title}</h2><p>{m.content.replace(/[#*`]/g, '').slice(0, 240)}…</p><button className="text-button" onClick={() => openConversation(c.id)}>Open conversation <ArrowRight size={15} /></button></article>)}</div> : <div className="empty-state"><Bookmark size={35} /><h2>No saved responses</h2><p>Tap the bookmark below any response to save it here.</p><button className="secondary-button" onClick={newChat}>New chat <ArrowRight size={15} /></button></div>}</div>}
       </div>{commentTarget && noteMessage && <aside className="notes-panel"><div className="notes-header"><div><MessageCircle size={18} /><h2>Response notes</h2></div><IconButton label="Close response notes" onClick={() => setCommentTarget(null)}><X size={18} /></IconButton></div><div className="note-context"><span>AIA RESPONSE</span><p>{noteMessage.content.slice(0, 150).replace(/[#*]/g, '')}…</p></div><div className="notes-list">{noteMessage.comments.length === 0 && <div className="notes-empty"><PenLine size={24} /><h3>No notes yet</h3></div>}{noteMessage.comments.map(n => <div className="note-card" key={n.id}><div><span className="avatar small-avatar">{profileInitial}</span><strong>You</strong><IconButton label="Delete note" onClick={() => void safe(async () => { if (isLive) await api.removeComment(n.id); update(commentTarget.cid, c => ({ ...c, messages: c.messages.map(m => m.id === commentTarget.mid ? { ...m, comments: m.comments.filter(x => x.id !== n.id) } : m) })); })}><Trash2 size={13} /></IconButton></div><p>{n.text}</p><time>{new Date(n.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</time></div>)}</div><form className="note-form" onSubmit={e => void addComment(e)}><textarea aria-label="Write a response note" placeholder="Add a note…" value={note} maxLength={4000} onChange={e => setNote(e.target.value)} /><button className="primary-button" disabled={!note.trim()}>Add note <ArrowUp size={15} /></button></form><p className="notes-private"><ShieldCheck size={12} /> Only visible to you</p></aside>}</div>
     </main>
     {toast && <div className="toast" role="status"><CheckCheck size={17} />{toast}<button aria-label="Dismiss notification" onClick={() => setToast('')}><X size={14} /></button></div>}
