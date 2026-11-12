@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
-import { Archive, ArrowRight, MessageSquare, Pin, Plus, Search, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Archive, ArrowRight, MessageSquare, MoreHorizontal, PenLine, Plus, Search, Trash2, X } from 'lucide-react';
 import { SearchText } from './SearchText';
 import { searchConversations } from './search';
 import type { ConversationResult, ConversationScope } from './search';
@@ -58,10 +58,25 @@ export function ConversationSearch({ conversations, onOpen }: { conversations: C
   </>;
 }
 
-export function ConversationHistory({ conversations, onOpen, onNew, onPatch, onDelete, busyId }: {
+export function ChatActions({ title, disabled, onRename, onDelete }: { title: string; disabled?: boolean; onRename: () => void; onDelete: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false); };
+    document.addEventListener('pointerdown', outside);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, [open]);
+  return <div className="chat-actions-menu" ref={ref} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false); }} onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); trigger.current?.focus(); } }}>
+    <button ref={trigger} className="icon-button" aria-label={`Options for ${title}`} aria-expanded={open} onClick={() => setOpen(!open)}><MoreHorizontal size={17} /></button>
+    {open && <div className="chat-actions-popover" role="group" aria-label="Conversation actions"><button disabled={disabled} onClick={() => { setOpen(false); onRename(); }}><PenLine size={15} />Rename</button><button className="delete-chat-action" disabled={disabled} onClick={() => { setOpen(false); onDelete(); }}><Trash2 size={15} />Delete</button></div>}
+  </div>;
+}
+
+export function ConversationHistory({ conversations, onOpen, onNew, onPatch }: {
   conversations: Conversation[]; onOpen: OpenConversation; onNew: () => void;
-  onPatch: (id: string, patch: Partial<Pick<Conversation, 'pinned' | 'archived'>>) => void;
-  onDelete: (id: string) => void; busyId: string | null;
+  onPatch: (id: string, patch: Partial<Pick<Conversation, 'archived'>>) => void;
 }) {
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<ConversationScope>('all');
@@ -79,9 +94,7 @@ export function ConversationHistory({ conversations, onOpen, onNew, onPatch, onD
       return <div className="history-table-row" key={c.id}>
         <button onClick={() => onOpen(c.id, result.messageId)}><ResultContent result={result} query={query} /></button>
         <div className="history-actions">
-          <button className={`icon-button ${c.pinned ? 'active' : ''}`} aria-pressed={c.pinned} aria-label={c.pinned ? 'Unpin conversation' : 'Pin conversation'} title={c.pinned ? 'Unpin' : 'Pin'} onClick={() => onPatch(c.id, { pinned: !c.pinned })}><Pin size={16} /></button>
           <button className="icon-button" aria-label={c.archived ? 'Restore conversation' : 'Archive conversation'} title={c.archived ? 'Restore' : 'Archive'} onClick={() => onPatch(c.id, { archived: !c.archived })}><Archive size={16} /></button>
-          <button className="icon-button" aria-label={`Delete ${c.title}`} title="Delete conversation" disabled={busyId === c.id} onClick={() => onDelete(c.id)}><Trash2 size={16} /></button>
         </div>
       </div>;
     })}</div>

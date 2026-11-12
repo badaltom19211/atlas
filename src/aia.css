@@ -224,3 +224,21 @@ mark { background: #ffe2a8; color: inherit; border-radius: 2px; }
 .grouped-sources .source-heading { font-weight: 500; }
 .grouped-sources .sql-source { background: #fafbfc; }
 .source-limit { color: #687386; }
+/* Chat actions stay reachable by keyboard and touch. */
+.sidebar-chat { display: grid; grid-template-columns: minmax(0, 1fr) 32px; align-items: center; border-radius: 8px; margin-bottom: 3px; }
+.sidebar-chat.selected { background: var(--accent-soft); color: var(--accent-hover); }
+.sidebar-chat .history-link { min-width: 0; width: 100%; }
+.chat-actions-menu { position: relative; }
+.chat-actions-popover { position: absolute; right: 0; top: 100%; z-index: 40; min-width: 155px; padding: 5px; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 6px 20px #16223812; }
+.chat-actions-popover button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; border: 0; background: transparent; border-radius: 6px; text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
+.chat-actions-popover button:hover { background: #f5f6f8; }
+.chat-actions-popover .delete-chat-action { color: #c61042; }
+.chat-actions-popover button:disabled { opacity: .45; cursor: not-allowed; }
+.sidebar-chat .chat-actions-menu { display: contents; }
+.sidebar-chat .chat-actions-popover { position: static; grid-column: 1 / -1; margin: 0 5px 6px; min-width: 0; box-shadow: none; }
+.rename-label { display: block; font-size: 13px; margin: 8px 0; }
+.rename-input { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
+.rename-input:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.grouped-sources > summary { width: fit-content; list-style: none; }
+.grouped-sources > summary::-webkit-details-marker { display: none; }
+.grouped-sources[open] > summary > svg:last-child { transform: rotate(180deg); }

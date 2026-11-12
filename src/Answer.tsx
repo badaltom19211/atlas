@@ -24,8 +24,8 @@ export function citationMarkdown(content: string, sources: CitationSource[]) {
 export function GroupedSources({ references }: { references: CitationSource[] }) {
   const { sql, documents, documentCount } = groupSources(references);
   if (!sql.length && !documents.length) return null;
-  return <section className="answer-sources grouped-sources" aria-label="Sources">
-    <div className="sources-label"><FileText size={15} /> Sources</div>
+  return <details className="answer-sources grouped-sources" aria-label="Sources">
+    <summary className="sources-toggle"><FileText size={15} /> Sources <ChevronDown size={15} /></summary>
     <ul className="sources-list">
       {sql.map((source, index) => <li key={source.id} className="sql-source">
         <div className="source-heading"><Database size={15} /><span>SQL query {index + 1}</span></div>
@@ -39,7 +39,7 @@ export function GroupedSources({ references }: { references: CitationSource[] })
       </li>)}
     </ul>
     {documentCount > documents.length && <small className="source-limit">Showing the {documents.length} most cited documents of {documentCount}.</small>}
-  </section>;
+  </details>;
 }
 
 export default function Answer({ content, references = [], sourceDisplay }: { content: string; references?: CitationSource[]; sourceDisplay?: 'grouped' }) {
