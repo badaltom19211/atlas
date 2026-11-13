@@ -25,7 +25,7 @@ export function GroupedSources({ references }: { references: CitationSource[] })
   const { sql, documents, documentCount } = groupSources(references);
   if (!sql.length && !documents.length) return null;
   return <details className="answer-sources grouped-sources" aria-label="Sources">
-    <summary className="sources-toggle"><FileText size={15} /> Sources <ChevronDown size={15} /></summary>
+    <summary className="sources-toggle"><FileText size={15} /> Sources <span className="source-count">{sql.length + documentCount}</span><ChevronDown size={15} /></summary>
     <ul className="sources-list">
       {sql.map((source, index) => <li key={source.id} className="sql-source">
         <div className="source-heading"><Database size={15} /><span>SQL query {index + 1}</span></div>
