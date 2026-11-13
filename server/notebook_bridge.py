@@ -47,7 +47,7 @@ class NotebookChatAgent(ContractRAGAgent):
 
         def call_chat():
             # Import once per process (Python's module cache); no dynamic exec or subprocess.
-            from .deep_agent_v1 import chat
+            from .deep_agent_v1 import contract_assistant as chat
             return chat(payload['question'], token=payload['token'], history=payload['history'],
                         settings=self.settings, user_id=payload['user_id'], session_id=payload['session_id'],
                         glossary=self.glossary, tracing=self.tracing, cancel=cancel)

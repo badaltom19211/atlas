@@ -1,3 +1,22 @@
+# 13 November workflow update
+
+The app bridge now calls `contract_assistant()` in `server/deep_agent_v1.py`.
+It wraps the existing explicit-token `chat()` boundary in one root MLflow span.
+`understand_query()` combines follow-up classification, standalone rewriting and
+glossary clarification in one LLM call. Follow-up metadata extraction still has
+its own calls; this does not mean one model call for the entire answer.
+The standalone question is persisted as notebook_query for the next turn.
+Trace ID, latency and standalone question are stored with answer metadata.
+Thumbs-up/down changes on owned answers also submit human feedback to MLflow
+when a trace ID and configured tracing are present. Feedback remains saved in
+Lakebase if MLflow submission fails; there is currently no retry queue.
+Clearing a vote only clears Lakebase feedback; it does not delete prior MLflow
+assessments. Notes stay private in Lakebase and are not sent as feedback rationale.
+Existing typed SQL/PDF references are retained instead of parsing notebook HTML.
+The global notebook credentials/session dictionary and demo calls remain excluded.
+No new app.yaml values or database migration are required beyond the existing
+optional MLFLOW_EXPERIMENT_ID. Deploy all changed backend files together.
+
 # Direct exported-notebook workflow
 
 The app imports `server/deep_agent_v1.py` and calls its `chat()` function inside
@@ -10,7 +29,7 @@ No notebook URL, Databricks Job, subprocess, or `%run` is involved.
 React message
   -> server/app.py (authenticate user; load owned conversation)
   -> server/notebook_bridge.py :: NotebookChatAgent.answer()
-  -> asyncio.to_thread -> server/deep_agent_v1.py :: chat()
+  -> asyncio.to_thread -> server/deep_agent_v1.py :: contract_assistant() -> chat()
   -> _chat() (fresh/follow-up resolution using supplied history)
   -> ask() -> build_contract_agent()'s Deep Agent graph.invoke()
   -> search_contracts()

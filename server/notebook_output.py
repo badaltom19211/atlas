@@ -33,8 +33,8 @@ def format_result(result, question, runtime):
     for stage in runtime.failures:
         answer += '\n\n' + ('Structured contract lookup' if stage == 'genie' else 'Contract document search') + ' is unavailable; those facts could not be checked.'
     output = {'sources': [], 'references': refs, 'source_display': 'grouped',
-              'workflow': 'notebook_chat', 'is_follow_up': bool(result.get('is_follow_up')),
-              'notebook_query': str(result.get('agent_query') or question)[:16000],
+              'workflow': 'notebook_chat', 'standalone_question': result.get('standalone_question'), 'is_follow_up': bool(result.get('is_follow_up')),
+              'notebook_query': str(result.get('standalone_question') or result.get('agent_query') or question)[:16000],
               'query_metadata': result.get('metadata') or {}, 'rag_query': (result.get('rag_query') or '')[:16000],
               'glossary_terms': result.get('glossary_terms', [])[:10],
               'glossary_status': getattr(runtime.glossary, 'status', 'disabled'),

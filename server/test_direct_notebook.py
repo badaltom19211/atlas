@@ -37,7 +37,7 @@ def notebook(monkeypatch):
         with bind_runtime(RequestRuntime(settings, token, user_id)) as scoped:
             yield scoped
     monkeypatch.setattr(w, 'open_runtime', runtime)
-    monkeypatch.setattr(w, '_llm_json', lambda system, query: {'follow_up': True} if system == w.FOLLOW_UP_PROMPT else {'vendor_name': ['Acme'], 'requested_fields': ['fees']})
+    monkeypatch.setattr(w, '_llm_json', lambda system, query: {'follow_up': True, 'standalone_question': 'Acme fees?'} if system.startswith(w.QUERY_UNDERSTANDING_PROMPT) else {'vendor_name': ['Acme'], 'requested_fields': ['fees']})
     monkeypatch.setattr(w, 'query_genie', lambda query: ('12 contracts [G1]', [{'id': 'G1', 'label': 'Count', 'sql': 'SELECT count(*) FROM contracts', 'has_rows': True}]))
     monkeypatch.setattr(w, 'query_rag', lambda query: ('30 days [D1]', [{'id': 'D1', 'label': 'Acme p. 4', 'document': 'Acme.pdf', 'page': 4, 'link': current_runtime().host + '/file.pdf'}]))
     class Agent:
@@ -320,3 +320,51 @@ def test_runtime_uses_user_credentials_and_closes_clients(monkeypatch):
     assert seen == [('model', 'alice-token'), ('search', 'alice-token')]
     assert http.is_closed and runtime.token == '' and runtime.oai is None
     with pytest.raises(LookupError): current_runtime()
+
+
+def test_query_understanding_validates_glossary_and_preserves_fresh_question(monkeypatch):
+    from . import deep_agent_v1 as w
+    glossary = SimpleNamespace(glossary=[{'term': 'fees', 'consolidated_definition': 'Contract charges'}])
+    calls=[]
+    def model(system, user):
+        calls.append(user)
+        return {'follow_up': True, 'standalone_question': 'Invented question',
+                'glossary_terms': ['fees', 'invented'], 'glossary_clarification': 'fees means charges'}
+    monkeypatch.setattr(w, '_llm_json', model)
+    with bind_runtime(RequestRuntime(Settings(), 'token', 'user', glossary=glossary)):
+        result=w.understand_query('What are the fees?')
+    assert len(calls)==1 and not result['follow_up']
+    assert result['standalone_question']=='What are the fees?'
+    assert result['glossary_terms']==['fees']
+
+
+def test_contract_assistant_has_one_root_trace_and_persistable_trace_id(monkeypatch):
+    from . import deep_agent_v1 as w
+    from .agent_runtime import EmptySpan
+    spans=[]
+    class Tracing:
+        @contextmanager
+        def start_span(self, **kwargs):
+            spans.append(kwargs['name'])
+            span=EmptySpan();span.trace_id='trace-123';yield span
+        def update_current_trace(self, **kwargs):
+            assert kwargs['user']=='alice' and kwargs['session_id']=='alice:chat'
+    def chat(message, **kwargs):
+        assert kwargs['history']==[]
+        return {'answer':'Answer', 'custom_outputs':{}}
+    monkeypatch.setattr(w,'chat',chat)
+    result=w.contract_assistant('Question', token='token', history=[{'role':'user','content':'old'}],
+        settings=Settings(),user_id='alice',session_id='alice:chat',tracing=Tracing(),new_conversation=True)
+    assert spans==['contract_assistant']
+    assert result['custom_outputs']['trace_id']=='trace-123'
+
+
+def test_trace_feedback_uses_human_identity():
+    from .deep_agent_v1 import log_user_feedback
+    received=[]
+    tracing=SimpleNamespace(log_feedback=lambda **kw:received.append(kw))
+    log_user_feedback('trace-123',False,'alice',tracing=tracing)
+    assert received[0]['trace_id']=='trace-123' and received[0]['value'] is False
+    assert received[0]['source'].source_id=='alice'
+    log_user_feedback('trace-123',True,'alice',tracing=DisabledTracing())
+    assert len(received)==1

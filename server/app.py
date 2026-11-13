@@ -6,7 +6,7 @@ from datetime import timedelta, timezone
 from pathlib import Path
 from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
@@ -182,11 +182,22 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
         return Response(status_code=204)
 
     @app.patch("/api/messages/{message_id}")
-    def edit_message(message_id: str, body: EditMessage, session=Depends(current), db=Depends(database)):
+    def edit_message(message_id: str, body: EditMessage, background_tasks: BackgroundTasks, session=Depends(current), db=Depends(database)):
         message = own_message(db, message_id, session.user_id)
+        changed_feedback = message.feedback != body.feedback
+        trace_id = message_json(message)['custom_outputs'].get('trace_id')
         message.feedback, message.saved = body.feedback, body.saved
         db.commit()
+        if changed_feedback and body.feedback in ('up', 'down') and isinstance(trace_id, str):
+            background_tasks.add_task(record_trace_feedback, trace_id, body.feedback == 'up', session.user_id)
         return message_json(message)
+
+    def record_trace_feedback(trace_id, helpful, user_id):
+        from .deep_agent_v1 import log_user_feedback
+        try:
+            log_user_feedback(trace_id, helpful, user_id, tracing=app.state.notebook_tracing)
+        except Exception:
+            logging.getLogger(__name__).warning('MLflow feedback unavailable; feedback remains saved in history.')
 
     @app.post("/api/messages/{message_id}/comments", status_code=201)
     def add_comment(message_id: str, body: AddComment, session=Depends(current), db=Depends(database)):
