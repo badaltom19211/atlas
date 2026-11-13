@@ -1,3 +1,5 @@
+> **12 November update:** The default workflow now directly imports `server/deep_agent_v1.py::chat()` in the existing app process (no subprocess). See [Direct notebook workflow](DIRECT_NOTEBOOK_WORKFLOW.md) for the call path, required files, configuration and optional MLflow tracing. Older adapted-workflow descriptions below apply only to `ATLAS_AGENT_WORKFLOW=adapted`.
+
 # Upgrade to the deep_agent_v1 contract workflow
 
 This release runs an app-native port of the updated deep_agent_v1 (1).ipynb inside

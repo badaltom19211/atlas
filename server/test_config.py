@@ -6,7 +6,7 @@ from .config import Settings
 
 
 def configured(host):
-    return Settings(auth_mode='databricks-app', databricks_host=host,
+    return Settings(agent_workflow='adapted', auth_mode='databricks-app', databricks_host=host,
                     model_api='serving', genie_agent_id='a' * 32,
                     lakebase_endpoint='projects/atlas/branches/production/endpoints/primary',
                     pg_host='database.example.test', pg_user='app-principal',

@@ -4,8 +4,8 @@ React + FastAPI contract chat with Databricks authentication and Lakebase histor
 The backend now runs the updated deep_agent_v1 workflow: optional shared-glossary
 enrichment, query metadata,
 parallel Genie and hybrid document retrieval with reranking, and a single merged
-answer with SQL and document sources. The app schedules each data source once;
-there is no second outer source-selection router.
+answer with SQL and document sources. The notebook Deep Agent invokes the combined search tool; there is no second
+outer source-selection router.
 
 Start with [UPGRADE_DEEP_AGENT.md](UPGRADE_DEEP_AGENT.md) for existing installations,
 or [SETUP_NEW_WORKSPACE.md](SETUP_NEW_WORKSPACE.md) for a fresh workspace.
@@ -20,26 +20,24 @@ Existing chats, database tables and authentication remain compatible.
 
 ## Runtime
 
-server/deep_agent.py implements the combined workflow. server/query_metadata.py
-handles the notebook's LLM metadata extraction and follow-up interpretation.
-server/genie.py calls the Genie Agent Responses API; server/citations.py validates
-and bounds references. React renders these references without executing notebook HTML.
-server/glossary_assets.py fetches the configured shared Workspace folder at startup;
-server/glossary.py calls its existing load_glossary and enrich_question functions.
-server/app.py uses DeepContractAgent, not the legacy RoutedAgent.
-The old adapter modules remain for compatibility/regression coverage.
+The backend imports `server/deep_agent_v1.py` and directly calls its `chat()`
+function in the existing app process. `server/notebook_bridge.py` keeps that
+synchronous work off the web event loop; no subprocess or notebook Job runs.
+The exported notebook owns prompts, follow-up resolution, metadata, Genie and RAG.
+`server/agent_runtime.py` provides request-scoped credentials/clients and tracing.
+`server/notebook_output.py` shapes references for the existing React UI.
 
-Genie, search, embeddings and answer models use the signed-in user's forwarded
-access token. Lakebase and shared glossary downloads use the app service principal, with API ownership checks
-for every chat operation. No global notebook token or shared chat session is used.
-Source metadata is saved in the existing atlas_tool_runs table and survives reload.
+Genie, search, embeddings and models use the signed-in user's forwarded token.
+Lakebase and startup glossary downloads use the app service principal. Ownership
+checks protect every chat operation. There are no shared credentials or global
+chat sessions. Follow-ups use the last complete owned turn, with its resolved
+subject saved in Lakebase. Optional MLflow tracing uses the app identity and an
+explicit experiment; no experiment means no workflow tracing.
 
-This is an app-native port with deterministic orchestration, not notebook execution
-or a Deep Agents framework deployment. Editing the workspace notebook does not
-synchronize this code. Shared glossary files are refreshed on app process startup
-when Workspace loading is enabled. The ingestion/chunking notebook stays outside the request
-path; the separate ai_extract metadata notebook is not invoked. MLflow tracing
-setup is not ported; the app persists bounded request provenance instead.
+See [Direct notebook workflow](DIRECT_NOTEBOOK_WORKFLOW.md) for exact function
+calls, the exported-file update contract, deployment and cancellation limits.
+Editing the workspace notebook alone does not change deployed code. The old
+`server/deep_agent.py` remains only for `ATLAS_AGENT_WORKFLOW=adapted` rollback.
 
 ## Configuration
 

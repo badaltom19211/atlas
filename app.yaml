@@ -1,5 +1,10 @@
 command: ['python', '-m', 'server.run']
 env:
+  - name: ATLAS_AGENT_WORKFLOW
+    value: notebook
+  # Optional tracing: first attach an MLflow experiment with resource key experiment.
+  # - name: MLFLOW_EXPERIMENT_ID
+  #   valueFrom: experiment
   - name: ATLAS_AUTH_MODE
     value: databricks-app
   - name: ATLAS_HISTORY_BACKEND

@@ -188,7 +188,7 @@ def test_startup_loads_once_and_chats_keep_separate_user_tokens(setup, monkeypat
         name = request.headers['x-test-user']
         return SimpleNamespace(id=name, name=name, email=name + '@example.test', token='token-' + name)
     config = replace(agent(Fixture()).settings, glossary_workspace_dir='/Workspace' + ROOT)
-    app = create_app(config, factory, testing=True, identity_resolver=identity)
+    app = create_app(replace(config, agent_workflow='adapted'), factory, testing=True, identity_resolver=identity)
     with TestClient(app, headers={'x-atlas-request': '1', 'x-test-user': 'alice'}) as client:
         assert len(calls) == 1 and len(workspace.downloads) == 3
         for name in ('alice', 'bob'):

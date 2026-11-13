@@ -17,6 +17,8 @@ from .database import (Comment, Conversation, Message, ToolRun, User, comment_js
                        conversation_json, create_database, message_json, now)
 from .deep_agent import HIDDEN_TOOLS, DeepContractAgent
 from .databricks_client import DatabricksHTTP
+from .notebook_bridge import NotebookChatAgent
+from .agent_runtime import configure_tracing, DisabledTracing
 from .databricks_errors import public_failure
 from .glossary_assets import load_glossary_runtime
 from .auth import install_auth
@@ -84,7 +86,10 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
     async def lifespan(app):
         runtime = await asyncio.to_thread(load_glossary_runtime, settings)
         app.state.glossary = runtime.enricher
+        app.state.notebook_slots = asyncio.Semaphore(2)
         try:
+            app.state.notebook_tracing = (await asyncio.to_thread(configure_tracing, settings)
+                                          if settings.agent_workflow == 'notebook' else DisabledTracing())
             yield
         finally:
             await asyncio.to_thread(runtime.close)
@@ -212,7 +217,16 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
         recent = db.scalar(select(func.count()).select_from(Message).join(Conversation).where(Conversation.user_id == session.user_id, Message.role == "assistant", Message.created_at > now() - timedelta(minutes=1)))
         if recent >= 20:
             raise HTTPException(429, "Please wait a minute before sending more messages.")
-        messages = [{"role": m.role, "content": m.content} for m in conversation.messages if m.status == "complete" and m.content]
+        messages = []
+        for message in conversation.messages:
+            if message.status != 'complete' or not message.content:
+                continue
+            item = {'role': message.role, 'content': message.content}
+            if settings.agent_workflow == 'notebook' and message.role == 'assistant':
+                previous_query = message_json(message)['custom_outputs'].get('notebook_query')
+                if isinstance(previous_query, str):
+                    item['notebook_query'] = previous_query[:16000]
+            messages.append(item)
         if body.regenerate:
             last_user = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]["role"] == "user"), None)
             if last_user is None:
@@ -264,9 +278,18 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
             tool_runs = {}
             try:
                 async with asyncio.timeout(settings.agent_timeout_seconds):
-                    request_model = model or await asyncio.to_thread(
-                        lambda: DeepContractAgent(settings, http=DatabricksHTTP(settings, token=session.token),
-                                                  glossary=app.state.glossary))
+                    if model is not None:
+                        request_model = model
+                    elif settings.agent_workflow == 'notebook':
+                        request_model = NotebookChatAgent(settings, token=session.token, user_id=session.user_id,
+                                                          conversation_id=conversation_id,
+                                                          glossary=app.state.glossary,
+                                                          tracing=app.state.notebook_tracing,
+                                                          slots=app.state.notebook_slots)
+                    else:
+                        request_model = await asyncio.to_thread(
+                            lambda: DeepContractAgent(settings, http=DatabricksHTTP(settings, token=session.token),
+                                                      glossary=app.state.glossary))
                     async for item in request_model.stream(context, body.style):
                         if isinstance(item, dict) and item.get("type") == "tool":
                             tool = item["tool"]

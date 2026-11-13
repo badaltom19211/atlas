@@ -6,3 +6,10 @@ databricks-sdk==0.157.0
 httpx==0.28.1
 certifi>=2024.2.2
 python-dotenv>=1.1.0,<2.0
+deepagents==0.4.12
+langchain-openai==1.7.3
+langchain-core==1.7.1
+databricks-vectorsearch==0.82
+openai==2.54.0
+mlflow[databricks]==3.18.0
+requests==2.34.2

@@ -1,3 +1,5 @@
+> **12 November update:** The default workflow now directly imports `server/deep_agent_v1.py::chat()` in the existing app process (no subprocess). See [Direct notebook workflow](DIRECT_NOTEBOOK_WORKFLOW.md) for the call path, required files, configuration and optional MLflow tracing. Older adapted-workflow descriptions below apply only to `ATLAS_AGENT_WORKFLOW=adapted`.
+
 # Set up AIA contract chat in a new Databricks workspace
 
 If the app and chat tables already exist, use [UPGRADE_DEEP_AGENT.md](UPGRADE_DEEP_AGENT.md).
@@ -40,11 +42,11 @@ Do not upload a real .env file or place tokens in React/VITE_* settings.
 
 ## 3. Create or configure the app
 
-Use the nine-dot app switcher → Databricks Apps → create a custom app.
+Use the nine-dot app switcher â†’ Databricks Apps â†’ create a custom app.
 Record the app's service principal client/application UUID from Authorization.
 This is not its numeric principal ID or OAuth integration client ID.
 
-In Settings → User authorization, add ai-gateway, genie and vector-search.
+In Settings â†’ User authorization, add ai-gateway, genie and vector-search.
 Retain model-serving if using serving endpoints.
 Keep the standard identity scopes. A workspace administrator may need to enable
 these scopes. In Resources, attach Database with the intended Lakebase project,

@@ -16,6 +16,8 @@ def env(name, default=''):
 
 @dataclass(frozen=True)
 class Settings:
+    agent_workflow: str = env('ATLAS_AGENT_WORKFLOW', 'notebook')
+    mlflow_experiment_id: str = env('MLFLOW_EXPERIMENT_ID')
     auth_mode: str = env('ATLAS_AUTH_MODE', 'databricks-app')
     databricks_host: str = env('DATABRICKS_HOST')
     databricks_profile: str = env('DATABRICKS_CONFIG_PROFILE')
@@ -53,6 +55,12 @@ class Settings:
         return self.auth_mode == 'databricks-app'
 
     def validate(self):
+        if self.agent_workflow not in ('notebook', 'adapted'):
+            raise RuntimeError('ATLAS_AGENT_WORKFLOW must be notebook or adapted.')
+        if self.agent_workflow == 'notebook' and self.model_api != 'gateway':
+            raise RuntimeError('The direct notebook workflow requires DATABRICKS_MODEL_API=gateway.')
+        if self.mlflow_experiment_id and not self.mlflow_experiment_id.isdigit():
+            raise RuntimeError('MLFLOW_EXPERIMENT_ID must be an existing numeric experiment ID.')
         if self.glossary_dir and self.glossary_workspace_dir:
             raise RuntimeError('Set only one of ATLAS_GLOSSARY_DIR or ATLAS_GLOSSARY_WORKSPACE_DIR.')
         if self.glossary_workspace_dir:

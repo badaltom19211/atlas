@@ -212,7 +212,7 @@ def test_actual_api_uses_new_workflow_user_token_and_reloads_private_sources(set
         return SimpleNamespace(id=name, name=name, email=name+'@example.test', token=name+'-token')
     monkeypatch.setattr('server.app.DatabricksHTTP', lambda settings, token: DatabricksHTTP(
         settings, token=token, transport=httpx.MockTransport(fixture)))
-    app = create_app(config, factory, testing=True, identity_resolver=identity)
+    app = create_app(replace(config, agent_workflow='adapted'), factory, testing=True, identity_resolver=identity)
     with TestClient(app, headers={'x-test-user': 'alice', 'x-atlas-request': '1'}) as alice:
         cid = create(alice)
         response = alice.post(f'/api/conversations/{cid}/messages', json={'content': 'Fixture Vendor notice and count?'})

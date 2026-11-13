@@ -65,8 +65,29 @@ class ContractSourcesUnavailable(RuntimeError):
         self.errors = tuple(errors)
 
 
+class NotebookCallError(RuntimeError):
+    LABELS = {'authentication': 'Notebook user authentication',
+              'workflow': 'Notebook workflow', 'genie': 'Genie response',
+              'documents': 'Contract document search', 'tracing': 'MLflow experiment access'}
+
+    def __init__(self, stage, status):
+        self.stage = stage if stage in self.LABELS else 'workflow'
+        self.status = status if isinstance(status, int) else None
+        super().__init__(self.public_message())
+        logger.warning('Notebook call failed: stage=%s; HTTP=%s', self.stage, self.status or 'unknown')
+
+    def public_message(self):
+        label = self.LABELS[self.stage]
+        status = f' (HTTP {self.status})' if self.status else ''
+        if self.stage == 'tracing':
+            return f'{label} failed{status}. Check the experiment resource and app service principal permissions.'
+        if self.status in (401, 403):
+            return f'{label} failed{status}. Check app scopes, sign-in consent, and your resource permissions.'
+        return f'{label} failed{status}. Check the app configuration and try again.'
+
+
 def known_failures(error):
-    if isinstance(error, DatabricksRequestError):
+    if isinstance(error, (DatabricksRequestError, NotebookCallError)):
         yield error
     elif isinstance(error, ContractSourcesUnavailable):
         for child in error.errors:

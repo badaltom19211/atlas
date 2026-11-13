@@ -247,7 +247,7 @@ def test_real_app_factory_passes_each_verified_user_token_to_the_new_workflow(se
     async def identity(request):
         subject = request.headers['x-test-user']
         return SimpleNamespace(id=subject, name=subject, email=subject + '@example.test', token='verified-' + subject)
-    app = create_app(replace(configured(), genie_agent_id='a' * 32), factory, testing=True, identity_resolver=identity)
+    app = create_app(replace(configured(), genie_agent_id='a' * 32, agent_workflow='adapted'), factory, testing=True, identity_resolver=identity)
     with TestClient(app, headers={'x-atlas-request': '1'}) as client:
         for name in ('alice', 'bob'):
             client.headers['x-test-user'] = name
