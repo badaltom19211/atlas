@@ -341,8 +341,21 @@ mark { background: #ffe2a8; color: inherit; border-radius: 2px; }
 .action-separator { background: #eee7ee; }
 .chat-composer { max-width: 940px; padding: 16px 42px 21px; background: linear-gradient(#ffffff00, #fff 18%); }
 .jump-latest { border-color: #e9dce7; color: #7e5e7c; padding: 10px 15px; box-shadow: 0 6px 20px #3a1c4210; }
-.thinking i { background: #d7597e; }
-.thinking span { color: #9c7d8f; }
+.thinking { gap: 9px; min-height: 34px; }
+.thinking .thinking-label { margin: 0; font-size: 13px; font-weight: 500; letter-spacing: .15px; color: #8d667b; }
+.thinking .thinking-dots { display: inline-flex; align-items: center; gap: 4px; margin: 0; height: 18px; }
+.thinking i { width: 4px; height: 4px; background: #cf2c5a; opacity: .35; animation: thinking-wave 1.4s ease-in-out infinite; }
+.thinking i:nth-child(2) { animation-delay: .16s; }
+.thinking i:nth-child(3) { animation-delay: .32s; }
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .thinking .thinking-label {
+    background: linear-gradient(105deg, #8d667b 0%, #8d667b 38%, #db1150 47%, #f2b5c8 50%, #db1150 53%, #8d667b 62%, #8d667b 100%);
+    background-size: 250% 100%; background-clip: text; -webkit-background-clip: text; color: transparent;
+    animation: thinking-shimmer 2.6s linear infinite;
+  }
+}
+@keyframes thinking-shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+@keyframes thinking-wave { 0%, 60%, 100% { transform: translateY(0) scale(.85); opacity: .35; } 30% { transform: translateY(-3px) scale(1.15); opacity: 1; } }
 .answer-sources { margin-top: 22px; }
 .sources-toggle { font-size: 11px; font-weight: 600; gap: 8px; padding: 8px 12px; border: 1px solid #eadfe8; border-radius: 10px; color: #7d647c; background: #fcf9fc; }
 .sources-toggle:hover { border-color: #e2b7c7; background: #fff6f9; }
@@ -450,4 +463,10 @@ mark { background: #ffe2a8; color: inherit; border-radius: 2px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .thinking .thinking-label { background: none; color: #8d667b; }
+  .thinking i { opacity: .65; transform: none; }
+}
+@media (forced-colors: active) {
+  .thinking .thinking-label { background: none; color: CanvasText; }
+  .thinking i { background: CanvasText; }
 }
