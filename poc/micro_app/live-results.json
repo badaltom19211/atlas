@@ -1,0 +1,93 @@
+{
+  "identity_verified": true,
+  "anonymous_http": 401,
+  "react_html_and_bundle_http": 200,
+  "history_mode": "session-only",
+  "cases": [
+    {
+      "case": "bike_count",
+      "http": 200,
+      "wall_seconds": 22.04,
+      "app_seconds": 19.74,
+      "selected_tools": [
+        "genie"
+      ],
+      "failed_tools": [],
+      "source_kinds": [
+        "genie"
+      ],
+      "used_source_count": 1,
+      "sql_sources": 1,
+      "follow_up": false,
+      "boot_id": "3aa228ee-c263-4500-844f-43a3d51876dc",
+      "routing_passed": true,
+      "expected_count_7_found": true
+    },
+    {
+      "case": "document",
+      "http": 200,
+      "wall_seconds": 6.87,
+      "app_seconds": 4.64,
+      "selected_tools": [
+        "projects"
+      ],
+      "failed_tools": [],
+      "source_kinds": [
+        "document"
+      ],
+      "used_source_count": 1,
+      "sql_sources": 0,
+      "follow_up": false,
+      "boot_id": "3aa228ee-c263-4500-844f-43a3d51876dc",
+      "routing_passed": true
+    },
+    {
+      "case": "followup",
+      "http": 200,
+      "wall_seconds": 7.96,
+      "app_seconds": 5.46,
+      "selected_tools": [
+        "projects"
+      ],
+      "failed_tools": [],
+      "source_kinds": [
+        "document"
+      ],
+      "used_source_count": 1,
+      "sql_sources": 0,
+      "follow_up": true,
+      "boot_id": "3aa228ee-c263-4500-844f-43a3d51876dc",
+      "routing_passed": true,
+      "subject_retained": true
+    },
+    {
+      "case": "mixed",
+      "http": 200,
+      "wall_seconds": 17.3,
+      "app_seconds": 15.21,
+      "selected_tools": [
+        "genie",
+        "projects"
+      ],
+      "failed_tools": [],
+      "source_kinds": [
+        "document",
+        "genie"
+      ],
+      "used_source_count": 6,
+      "sql_sources": 1,
+      "follow_up": false,
+      "boot_id": "3aa228ee-c263-4500-844f-43a3d51876dc",
+      "routing_passed": true,
+      "expected_count_7_found": true
+    }
+  ],
+  "all_passed": true,
+  "not_tested": [
+    "Lakebase integration (resource attachment rejected)",
+    "MLflow trace ingestion",
+    "second real user identity isolation",
+    "browser visual QA",
+    "load testing"
+  ]
+}

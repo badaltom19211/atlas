@@ -1,0 +1,25 @@
+command: ['python', '-m', 'poc.micro_app.run']
+env:
+  - name: ATLAS_AGENT_WORKFLOW
+    value: notebook
+  - name: ATLAS_AUTH_MODE
+    value: databricks-app
+  - name: ATLAS_HISTORY_BACKEND
+    value: lakebase
+  - name: DATABRICKS_GENIE_AGENT_ID
+    value: '01f1c170dc101db99c12558535da4d41'
+  # This field is interpreted as the project index ONLY by this POC entry point.
+  - name: DATABRICKS_CONTRACT_INDEX
+    value: prod.project_recapture.projects_idx
+  - name: DATABRICKS_MODEL_API
+    value: gateway
+  - name: DATABRICKS_AGENT_MODEL
+    value: system.ai.meta-llama-3-3-70b-instruct
+  - name: DATABRICKS_EMBEDDING_MODEL
+    value: system.ai.gte-large-en
+  - name: ATLAS_RAG_TOP_K
+    value: '5'
+  - name: LAKEBASE_ENDPOINT
+    value: projects/atlas-chat-badal/branches/production/endpoints/primary
+  - name: PGDATABASE
+    value: aia_micro_poc

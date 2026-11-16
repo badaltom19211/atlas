@@ -45,14 +45,7 @@ class NotebookChatAgent(ContractRAGAgent):
         if self.slots is not None:
             await self.slots.acquire()
 
-        def call_chat():
-            # Import once per process (Python's module cache); no dynamic exec or subprocess.
-            from .deep_agent_v1 import contract_assistant as chat
-            return chat(payload['question'], token=payload['token'], history=payload['history'],
-                        settings=self.settings, user_id=payload['user_id'], session_id=payload['session_id'],
-                        glossary=self.glossary, tracing=self.tracing, cancel=cancel)
-
-        task = asyncio.create_task(asyncio.to_thread(call_chat))
+        task = asyncio.create_task(asyncio.to_thread(self.call_chat, payload, cancel))
         def finished(future):
             # A cancelled HTTP request must not free capacity while sync I/O still runs.
             if self.slots is not None:
@@ -66,3 +59,11 @@ class NotebookChatAgent(ContractRAGAgent):
         except asyncio.CancelledError:
             cancel.set()
             raise
+
+    def call_chat(self, payload, cancel):
+        # Python caches this import. A separate POC entry point can supply a
+        # domain adapter without changing production auth/history/streaming.
+        from .deep_agent_v1 import contract_assistant as chat
+        return chat(payload['question'], token=payload['token'], history=payload['history'],
+                    settings=self.settings, user_id=payload['user_id'], session_id=payload['session_id'],
+                    glossary=self.glossary, tracing=self.tracing, cancel=cancel)

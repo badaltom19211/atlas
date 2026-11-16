@@ -1,0 +1,19 @@
+{
+  "deployment_id": "01f1e1e917d0152dac11296b479ea1d8",
+  "source_release": "session-v2",
+  "http": 200,
+  "wall_seconds": 16.68,
+  "app_seconds": 14.05,
+  "selected_tools": [
+    "genie",
+    "projects"
+  ],
+  "failed_tools": [],
+  "source_kinds": [
+    "document",
+    "genie"
+  ],
+  "retrieval_limit_disclosed": true,
+  "expected_count_7_found": true,
+  "boot_id": "bede3ab2-ed12-4fbd-87a1-e6137948aa6b"
+}

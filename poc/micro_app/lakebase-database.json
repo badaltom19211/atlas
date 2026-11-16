@@ -1,0 +1,6 @@
+{
+  "spec": {
+    "postgres_database": "aia_micro_poc",
+    "role": "projects/atlas-chat-badal/branches/production/roles/badal-tomar"
+  }
+}

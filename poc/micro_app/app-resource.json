@@ -1,0 +1,11 @@
+{
+  "resources": [{
+    "name": "postgres",
+    "description": "Separate POC history database",
+    "postgres": {
+      "branch": "projects/atlas-chat-badal/branches/production",
+      "database": "projects/atlas-chat-badal/branches/production/databases/aia-micro-poc",
+      "permission": "CAN_CONNECT_AND_CREATE"
+    }
+  }]
+}

@@ -74,7 +74,8 @@ class SendMessage(BaseModel):
     assistant_id: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9_-]{1,36}$')
 
 
-def create_app(settings=None, session_factory=None, model=None, *, testing=False, identity_resolver=None):
+def create_app(settings=None, session_factory=None, model=None, *, testing=False, identity_resolver=None,
+               notebook_agent_factory=None):
     settings = settings or Settings()
     if not testing:
         settings.validate()
@@ -292,7 +293,7 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
                     if model is not None:
                         request_model = model
                     elif settings.agent_workflow == 'notebook':
-                        request_model = NotebookChatAgent(settings, token=session.token, user_id=session.user_id,
+                        request_model = (notebook_agent_factory or NotebookChatAgent)(settings, token=session.token, user_id=session.user_id,
                                                           conversation_id=conversation_id,
                                                           glossary=app.state.glossary,
                                                           tracing=app.state.notebook_tracing,
