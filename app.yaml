@@ -16,7 +16,9 @@ env:
   - name: DATABRICKS_MODEL_API
     value: gateway
   - name: DATABRICKS_AGENT_MODEL
-    value: system.ai.meta-llama-3-3-70b-instruct
+    value: system.ai.gpt-oss-120b
+  - name: DATABRICKS_REASONING_EFFORT
+    value: medium
   - name: DATABRICKS_EMBEDDING_MODEL
     value: system.ai.gte-large-en
   - name: ATLAS_RAG_TOP_K

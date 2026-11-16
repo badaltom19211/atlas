@@ -38,7 +38,7 @@ def format_result(result, question, runtime):
               'query_metadata': result.get('metadata') or {}, 'rag_query': (result.get('rag_query') or '')[:16000],
               'glossary_terms': result.get('glossary_terms', [])[:10],
               'glossary_status': getattr(runtime.glossary, 'status', 'disabled'),
-              'citation_status': 'reported' if any(r.get('used_in_answer') for r in refs) else 'not_applicable',
+              'citation_status': 'reported' if any(r.get('used_in_answer') for r in refs) else ('missing' if refs else 'not_applicable'),
               'tracing': 'disabled' if isinstance(runtime.tracing, DisabledTracing) else 'configured'}
     if len(json.dumps({'custom_outputs': output}, ensure_ascii=False, allow_nan=False)) > 63000 or len(answer) > 100000:
         raise ValueError('Notebook result exceeds storage limits.')

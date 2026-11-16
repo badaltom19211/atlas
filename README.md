@@ -20,12 +20,38 @@ Existing chats, database tables and authentication remain compatible.
 
 ## Runtime
 
-The backend imports `server/deep_agent_v1.py` and directly calls its `chat()`
-function in the existing app process. `server/notebook_bridge.py` keeps that
+The backend imports `server/deep_agent_v1.py` and directly calls its `contract_assistant()`
+entry point, which calls `chat()` in the existing app process. `server/notebook_bridge.py` keeps that
 synchronous work off the web event loop; no subprocess or notebook Job runs.
 The exported notebook owns prompts, follow-up resolution, metadata, Genie and RAG.
 `server/agent_runtime.py` provides request-scoped credentials/clients and tracing.
 `server/notebook_output.py` shapes references for the existing React UI.
+
+The 16 November `deepagent.py` update adds GPT-OSS reasoning configuration and
+normalizes `【D1】` / `［G1］` citations before validation, source counting and display.
+`DATABRICKS_AGENT_MODEL=system.ai.gpt-oss-120b` and
+`DATABRICKS_REASONING_EFFORT=medium` match that notebook. If retaining a different
+model, leave reasoning effort empty unless the model supports it. The supplied
+export includes Markdown, `%pip`, notebook credentials and demo calls, so it is
+not copied over the importable app module verbatim. App identity isolation,
+owned history, cancellation and optional app-principal tracing are preserved.
+
+The backend now sends fixed progress events while the notebook runs:
+`queued → understanding → searching → composing → sources`. `src/Thinking.tsx`
+shows an animated indicator and changes text every 4.5 seconds within the current
+stage. It advances stages only on backend events, never on a simulated timer.
+These are workflow statuses, not model reasoning or token streaming.
+
+Source references are still stored with the answer in Lakebase. When retrieved
+references exist but the model omitted citation tags, they appear separately as
+**Retrieved references**, with an attribution warning. They are not marked as used
+evidence. Existing answers with no stored reference metadata cannot gain sources
+retroactively; ask the question again after redeployment.
+
+Deploy the frontend and backend together to use these changes. Keep your existing
+workspace IDs, Lakebase and glossary/MLflow configuration when updating `app.yaml`;
+the repository file remains a template. Rebuild/redeploy, refresh the browser and
+test with a new question. No database schema migration is required.
 
 Genie, search, embeddings and models use the signed-in user's forwarded token.
 Lakebase and startup glossary downloads use the app service principal. Ownership

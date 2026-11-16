@@ -13,6 +13,15 @@ const sql: CitationSource = { id: 'G1', kind: 'genie', label: 'Count', sql: 'SEL
   has_rows: true, used_in_answer: true, url: 'https://workspace.example.test/genie/chat', citation_order: 0 };
 
 describe('notebook source presentation', () => {
+  it('keeps uncited retrieved evidence visible without claiming the answer used it', () => {
+    const reference = { ...doc('D1', 'contract.pdf', 4), used_in_answer: false };
+    const html = renderToStaticMarkup(<Answer content="An answer without citations." sourceDisplay="grouped" references={[reference]} />);
+    expect(html).toContain('Retrieved references');
+    expect(html).toContain('did not identify which ones it used');
+    expect(html).toContain('contract.pdf');
+    expect(reference.used_in_answer).toBe(false);
+    expect(groupSources([reference]).documents).toHaveLength(0);
+  });
   it('groups by PDF, combines pages and ranks the three most cited files', () => {
     const sources = [doc('D1', 'first.pdf', 1), doc('D2', 'second.pdf', 4, 3), doc('D3', 'first.pdf', 2),
       doc('D4', 'third.pdf', 5), doc('D5', 'fourth.pdf', 9, 4)];

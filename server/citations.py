@@ -7,6 +7,12 @@ from .notebook_agent import page_number, pages
 
 TAG = re.compile(r'\[\s*([GD]\d+(?:\s*[,;]\s*[GD]\d+)*)\s*\]')
 TAG_RUN = re.compile(r'[ \t]*' + TAG.pattern + r'(?:[ \t]*(?:[,;]|and)?[ \t]*' + TAG.pattern + r')*')
+FULLWIDTH_BRACKETS = str.maketrans({'【': '[', '】': ']', '［': '[', '］': ']'})
+
+
+def normalize_citation_tags(answer):
+    """GPT-OSS can emit wide brackets; normalize before validation and counting."""
+    return (answer or '').translate(FULLWIDTH_BRACKETS)
 
 
 def safe_source_url(value, host):
@@ -68,6 +74,7 @@ def document_sources(records, host):
 
 
 def check_citations(answer, sources):
+    answer = normalize_citation_tags(answer)
     known = {source['id'] for source in sources}
     used = {identifier for match in TAG.finditer(answer) for identifier in re.findall(r'[GD]\d+', match[1])}
     if used - known:
@@ -87,6 +94,7 @@ def without_model_sources(answer):
 
 def prepare_source_display(answer, sources):
     """Keep provenance in metadata while showing clean prose, as in the new notebook."""
+    answer = normalize_citation_tags(answer)
     used = check_citations(answer, sources)
     ids = [identifier for match in TAG.finditer(answer) for identifier in re.findall(r'[GD]\d+', match[1])]
     counts = Counter(ids)

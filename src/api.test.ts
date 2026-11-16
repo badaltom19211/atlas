@@ -10,6 +10,14 @@ const ndjson = (events: unknown[], split = 1) => {
 };
 
 describe('FastAPI chat integration', () => {
+  it('forwards real progress stages and ignores unrecognized provider text', async () => {
+    const progress = vi.fn();
+    await readChatResponse(ndjson([
+      { type: 'progress', stage: 'searching' }, { type: 'progress', stage: 'private arbitrary text' },
+      { type: 'progress', stage: 'composing' }, { type: 'done', assistant },
+    ]), vi.fn(), undefined, progress);
+    expect(progress.mock.calls).toEqual([['searching'], ['composing']]);
+  });
   it('decodes split UTF-8, tool receipts, and final messages', async () => {
     const chunk = vi.fn(), tool = vi.fn();
     const receipt = { id: 'genie', name: 'genie_structured_data_tool', status: 'error', input: '{}', output: '{"ok":false}' };

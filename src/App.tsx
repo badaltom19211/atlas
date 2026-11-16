@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { ArrowDown, ArrowRight, ArrowUp, Bookmark, CheckCheck, ChevronRight, CircleHelp, Copy, History, LogOut, Menu, MessageCircle, MessageSquare, Monitor, PanelLeftClose, PenLine, Plus, Search, ShieldCheck, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react';
 import Answer from './Answer';
+import Thinking, { type ProgressStage } from './Thinking';
 import { api, failedResponseContent, isLive } from './api';
 import { ToolDetails } from './ToolDetails';
 import { ConversationHistory, ConversationSearch, ChatActions, searchShortcut } from './ConversationList';
@@ -58,6 +59,7 @@ export default function App() {
   const [note, setNote] = useState('');
   const [toast, setToast] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ProgressStage>('queued');
   const [settingsTab, setSettingsTab] = useState('General');
   const [sessions, setSessions] = useState<AppSession[]>([]);
   const [compact, setCompact] = useState(() => localStorage.getItem('atlas.compact') === 'true');
@@ -120,12 +122,12 @@ export default function App() {
     try {
       if (!conversation) { conversation = isLive ? await api.create(input.trim().slice(0, 70)) : makeConversation(input.trim().slice(0, 70)); setConversations(cs => [conversation!, ...cs]); }
       const id = conversation.id;
-      setActiveId(id); setView('chat'); setBusyId(id); setInput('');
+      setActiveId(id); setView('chat'); setBusyId(id); setProgress('queued'); setInput('');
       assistant = makeMessage('assistant', ''); localUser = regenerate ? undefined : makeMessage('user', content);
       const aid = assistant.id;
       update(id, c => ({ ...c, updatedAt: new Date().toISOString(), messages: [...c.messages, ...(localUser ? [localUser] : []), assistant!] }));
       if (isLive) {
-        const result = await api.send(id, content, text => update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? { ...m, content: m.content + text } : m) })), controller.signal, regenerate, tool => update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? { ...m, tools: [...(m.tools || []).filter(t => t.id !== tool.id), tool] } : m) })), { user: localUser?.id, assistant: aid });
+        const result = await api.send(id, content, text => update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? { ...m, content: m.content + text } : m) })), controller.signal, regenerate, tool => update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? { ...m, tools: [...(m.tools || []).filter(t => t.id !== tool.id), tool] } : m) })), { user: localUser?.id, assistant: aid }, setProgress);
         update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? result.assistant : m.id === localUser?.id && result.user ? result.user : m) }));
       } else {
         const answer = demoAnswer();
@@ -180,7 +182,7 @@ export default function App() {
               <div className="message-avatar">{m.role === 'assistant' ? <Mark small /> : <span className="avatar">{profileInitial}</span>}</div>
               <div className="message-main">
                 <div className="message-meta"><strong>{m.role === 'assistant' ? 'AIA' : 'You'}</strong><time dateTime={m.createdAt} title={new Date(m.createdAt).toLocaleString()}>{new Date(m.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time></div>
-                <div className="markdown">{m.content ? (m.role === 'user' ? <div className="user-text">{m.content}</div> : <Answer content={m.content} references={m.custom_outputs?.references} sourceDisplay={m.custom_outputs?.source_display} />) : <div className="thinking" role="status" aria-live="polite" aria-atomic="true"><span className="thinking-label">Thinking</span><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span></div>}</div>
+                <div className="markdown">{m.content ? (m.role === 'user' ? <div className="user-text">{m.content}</div> : <Answer content={m.content} references={m.custom_outputs?.references} sourceDisplay={m.custom_outputs?.source_display} />) : <Thinking stage={progress} />}</div>
                 <ToolDetails tools={m.tools} />
                 {m.status === 'stopped' && <span className="response-status">Response stopped</span>}
                 {m.status === 'error' && <span className="response-status error">Response interrupted. You can try again.</span>}

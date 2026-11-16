@@ -1,4 +1,5 @@
 import type { AppSession, Boot, Conversation, Feedback, Message, Note, ToolRun } from './types';
+import { progressStages, type ProgressStage } from './Thinking';
 export { isLive } from './config';
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
@@ -34,7 +35,7 @@ export function failedResponseContent(error: unknown): string {
 }
 
 /** Consume complete NDJSON events across arbitrary UTF-8/network boundaries. */
-export async function readChatResponse(response: Response, onChunk: (text: string) => void, onTool?: (tool: ToolRun) => void): Promise<Answer> {
+export async function readChatResponse(response: Response, onChunk: (text: string) => void, onTool?: (tool: ToolRun) => void, onProgress?: (stage: ProgressStage) => void): Promise<Answer> {
   if (!response.body) throw new Error('AIA returned an empty response.');
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -48,6 +49,7 @@ export async function readChatResponse(response: Response, onChunk: (text: strin
     if (result) throw new Error('Unexpected data after the completed response.');
     if (value.type === 'delta' && typeof value.text === 'string') onChunk(value.text);
     else if (value.type === 'tool' && value.tool) onTool?.(value.tool);
+    else if (value.type === 'progress' && progressStages.includes(value.stage)) onProgress?.(value.stage);
     else if (value.type === 'done' && value.assistant?.id && typeof value.assistant.content === 'string') result = value;
   };
   try {
@@ -88,11 +90,11 @@ export const api = {
   removeComment: (id: string) => json<void>(`/comments/${encodeURIComponent(id)}`, 'DELETE'),
   sessions: () => json<AppSession[]>('/sessions'),
   logout: () => json<void>('/auth/logout', 'POST'),
-  async send(id: string, content: string, onChunk: (text: string) => void, signal: AbortSignal, regenerate = false, onTool?: (tool: ToolRun) => void, ids?: { user?: string; assistant: string }): Promise<Answer> {
+  async send(id: string, content: string, onChunk: (text: string) => void, signal: AbortSignal, regenerate = false, onTool?: (tool: ToolRun) => void, ids?: { user?: string; assistant: string }, onProgress?: (stage: ProgressStage) => void): Promise<Answer> {
     const response = await request(`/conversations/${encodeURIComponent(id)}/messages`, {
       method: 'POST', signal, headers: { Accept: 'application/x-ndjson' },
       body: JSON.stringify({ content, regenerate, user_id: ids?.user, assistant_id: ids?.assistant }),
     });
-    return readChatResponse(response, onChunk, onTool);
+    return readChatResponse(response, onChunk, onTool, onProgress);
   },
 };

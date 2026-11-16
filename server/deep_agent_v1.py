@@ -1,7 +1,7 @@
-"""App-compatible Python export of deepagentv11.ipynb (12 November 2026).
+"""App-compatible export updated from deepagent.py (16 November 2026).
 
 The notebook's prompts, Genie/RAG tools and follow-up functions live here.
-App entry point: chat(query, token=..., history=..., settings=..., ...).
+App entry point: contract_assistant(message, token=..., history=..., settings=..., ...).
 Notebook-only install/auth/demo cells are excluded. Request services live in
 agent_runtime.py; no global credentials, clients, agents or chat memory.
 """
@@ -11,11 +11,18 @@ from concurrent.futures import ThreadPoolExecutor
 from mlflow.entities import SpanType
 from .agent_runtime import current_runtime as _runtime, open_runtime, ScopedTracing, provider_failure
 from .notebook_output import normalize_sources, format_result
-from .citations import prepare_source_display, without_model_sources
+from .citations import prepare_source_display, without_model_sources, normalize_citation_tags
 
 mlflow = ScopedTracing()
 
 RAG_COLUMNS = ["chunk_id", "document_title", "section_title", "page_start", "page_end", "contextualized_text", "citation"]
+
+
+def reasoning_options(model=None):
+    """Match the latest notebook; omit the option for non-reasoning models by default."""
+    settings = _runtime().settings
+    effort = settings.reasoning_effort or ('medium' if 'gpt-oss' in (model or settings.agent_model) else '')
+    return {'extra_body': {'reasoning_effort': effort}} if effort else {}
 
 import re
 
@@ -127,7 +134,7 @@ def retrieve(query: str, k: int | None = None, rerank: bool = True) -> list[dict
 @mlflow.trace(name="rag_llm_answer", span_type=SpanType.CHAT_MODEL)
 def generate_answer(messages: list[dict]) -> str:
     _runtime().check()
-    resp = _runtime().oai.chat.completions.create(model=_runtime().settings.agent_model, temperature=0.1, max_tokens=1200, messages=messages)
+    resp = _runtime().oai.chat.completions.create(model=_runtime().settings.agent_model, temperature=0.1, max_tokens=1200, messages=messages, **reasoning_options())
     return resp.choices[0].message.content
 
 CITATION_RE = re.compile(r"^\[(.*?)\]\((.*)\)$", re.DOTALL)
@@ -244,7 +251,7 @@ def _iso(d):
 def _llm_json(system: str, user: str) -> dict:
     _runtime().check()
     resp = _runtime().oai.chat.completions.create(model=_runtime().settings.agent_model, temperature=0, max_tokens=500,
-                                       messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
+                                       messages=[{"role": "system", "content": system}, {"role": "user", "content": user}], **reasoning_options())
     m = re.search(r"\{.*\}", resp.choices[0].message.content or "", re.DOTALL)
     try:
         return json.loads(m.group(0)) if m else {}
@@ -464,6 +471,7 @@ def search_genie_and_rag(query: str, metadata: dict | None = None) -> dict:
     """Call Genie with the question and the metadata-aware RAG, in parallel. Can be called directly.
     Metadata is extracted inside the RAG branch, so it runs while Genie is working.
     Returns {'genie_text', 'genie_sources', 'rag_text', 'rag_sources', 'metadata', 'rag_query'}."""
+    _runtime().report('searching')
     with ThreadPoolExecutor(max_workers=2) as pool:
         # copy_context() keeps the MLflow span (and RUN_STATE) inside each thread
         genie_f = pool.submit(contextvars.copy_context().run, _safe, query_genie, query)
@@ -479,6 +487,7 @@ def search_contracts(query: str) -> str:
     state = RUN_STATE.get() or {}
     # metadata is extracted from the agent's query here, unless ask() was given metadata (e.g. for a follow-up)
     res = search_genie_and_rag(query, state.get("preset_metadata"))
+    _runtime().report('composing')
     state["metadata"], state["rag_query"] = res["metadata"], res["rag_query"]
     state["sources"] = {"genie": res["genie_sources"], "rag": res["rag_sources"]}
     span = mlflow.get_current_active_span()
@@ -514,7 +523,7 @@ def build_contract_agent(model: str | None = None, temperature: float = 0.1, sys
     _runtime().check()
     model = model or _runtime().settings.agent_model
     llm = ChatOpenAI(model=model, base_url=_runtime().gateway_url, api_key=_runtime().token,
-                     temperature=temperature, timeout=60, max_retries=0, http_client=_runtime().http)
+                     temperature=temperature, timeout=60, max_retries=0, http_client=_runtime().http, **reasoning_options(model))
     return create_deep_agent(model=llm, tools=[search_contracts], system_prompt=system_prompt)
 
 TAG_GROUP_RE = re.compile(r"\[\s*([GD]\d+(?:\s*[,;]\s*[GD]\d+)*)\s*\]")
@@ -545,6 +554,7 @@ def render_citations(answer: str, sources: list[dict], max_docs: int = MAX_DOC_S
     """Remove [G1]/[D2] tags from the answer and build the Sources list from the sources the answer actually used.
     Genie -> SQL queries that were cited and returned rows; documents -> up to max_docs PDFs (most cited first),
     each a link that opens the PDF in a new tab."""
+    answer = normalize_citation_tags(answer)
     by_id = {s["id"]: s for s in sources}
     cited, counts = [], {}
     def repl(m):
@@ -602,7 +612,7 @@ def ask(query: str, session_id: str = "default", show: bool = True, agent=None, 
     with mlflow.start_span(name="contract_agent", span_type=SpanType.AGENT) as span:
         span.set_inputs({"query": query, "session_id": session_id})
         agent_input, glossary = (enrich_user_query(query) if enrich else (query, None))
-        mlflow.update_current_trace(metadata={"mlflow.trace.user": _runtime().user_id, "mlflow.trace.session": session_id})
+        mlflow.update_current_trace(user=_runtime().user_id, session_id=session_id)
 
         state = {"metadata": None, "sources": {"genie": [], "rag": []}, "rag_query": None, "preset_metadata": metadata}
         token = RUN_STATE.set(state)
@@ -615,7 +625,8 @@ def ask(query: str, session_id: str = "default", show: bool = True, agent=None, 
 
         content = result["messages"][-1].content
         raw = content if isinstance(content, str) else "".join(c.get("text", "") for c in content if isinstance(c, dict))
-        raw = without_model_sources(raw)
+        _runtime().report('sources')
+        raw = without_model_sources(normalize_citation_tags(raw))
         sources = state["sources"]["genie"] + state["sources"]["rag"]
         references = normalize_sources(sources, _runtime().host)
         prepare_source_display(raw, references)  # Reject unknown IDs before hiding them.
@@ -691,6 +702,7 @@ def _chat(query: str, session_id: str = "default", show: bool = False, previous=
     prev = previous
     with mlflow.start_span(name="contract_chat", span_type=SpanType.CHAIN) as span:
         span.set_inputs({"query": query, "session_id": session_id})
+        _runtime().report('understanding')
         u = understand_query(query, prev["query"] if prev else None, prev["answer"] if prev else None)
         if not u["follow_up"]:
             result = ask(u["enriched_question"], session_id=session_id, show=show, enrich=False)
@@ -709,7 +721,7 @@ def _chat(query: str, session_id: str = "default", show: bool = False, previous=
     return result
 
 def chat(query: str, *, token: str, history: list[dict], settings,
-         user_id: str, session_id: str, glossary=None, tracing=None, cancel=None) -> dict:
+         user_id: str, session_id: str, glossary=None, tracing=None, cancel=None, progress=None) -> dict:
     """Call the notebook pipeline directly with explicit, owner-checked app history.
 
     Returns answer + custom_outputs for React/Lakebase. History contains PRIOR
@@ -724,7 +736,7 @@ def chat(query: str, *, token: str, history: list[dict], settings,
             if question is not None:
                 previous = {'query': history[i].get('notebook_query') or question, 'answer': history[i]['content']}
                 break
-    with open_runtime(settings, token, user_id, glossary=glossary, tracing=tracing, cancel=cancel) as runtime:
+    with open_runtime(settings, token, user_id, glossary=glossary, tracing=tracing, cancel=cancel, progress=progress) as runtime:
         try:
             runtime.agent = build_contract_agent()
             result = _chat(query, session_id=session_id, previous=previous)
@@ -738,7 +750,7 @@ def chat(query: str, *, token: str, history: list[dict], settings,
 
 
 def contract_assistant(message, *, token, history, settings, user_id, session_id,
-                       glossary=None, tracing=None, cancel=None, new_conversation=False, request_id=None):
+                       glossary=None, tracing=None, cancel=None, new_conversation=False, request_id=None, progress=None):
     """App entry point: one root trace; failures propagate to existing HTTP error handling."""
     from .agent_runtime import DisabledTracing
     tracing = tracing if tracing is not None else DisabledTracing()
@@ -747,20 +759,22 @@ def contract_assistant(message, *, token, history, settings, user_id, session_id
         span.set_inputs({'message': message, 'session_id': session_id, 'user_id': user_id,
                          'history_turns': len(history), 'new_conversation': new_conversation})
         result = chat(message, token=token, history=[] if new_conversation else history, settings=settings,
-                      user_id=user_id, session_id=session_id, glossary=glossary, tracing=tracing, cancel=cancel)
+                      user_id=user_id, session_id=session_id, glossary=glossary, tracing=tracing, cancel=cancel, progress=progress)
         result['custom_outputs'].update(trace_id=getattr(span, 'trace_id', None),
             latency_s=round(time.perf_counter()-start, 2), session_id=session_id)
         span.set_outputs(result)
         tracing.update_current_trace(user=user_id, session_id=session_id, client_request_id=request_id,
-            tags={'app': 'contract_assistant', 'app_version': 'deep_agent_v1', 'status': 'ok'},
+            tags={'app': 'contract_assistant', 'app_version': 'deep_agent_2026_11_16', 'status': 'ok',
+                  'is_follow_up': str(result['custom_outputs'].get('is_follow_up', False)).lower(),
+                  'llm_model': settings.agent_model},
             request_preview=message[:1000], response_preview=result['answer'][:1000])
         return result
 
 
-def log_user_feedback(trace_id, is_helpful, user_id, *, tracing):
+def log_user_feedback(trace_id, is_helpful, user_id, *, tracing, comment=None):
     from .agent_runtime import DisabledTracing
     from mlflow.entities import AssessmentSource, AssessmentSourceType
     if not trace_id or isinstance(tracing, DisabledTracing):
         return None
-    return tracing.log_feedback(trace_id=trace_id, name='user_feedback', value=bool(is_helpful),
+    return tracing.log_feedback(trace_id=trace_id, name='user_feedback', value=bool(is_helpful), rationale=comment,
         source=AssessmentSource(source_type=AssessmentSourceType.HUMAN, source_id=user_id))

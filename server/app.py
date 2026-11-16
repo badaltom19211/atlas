@@ -302,7 +302,11 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
                             lambda: DeepContractAgent(settings, http=DatabricksHTTP(settings, token=session.token),
                                                       glossary=app.state.glossary))
                     async for item in request_model.stream(context, body.style):
-                        if isinstance(item, dict) and item.get("type") == "tool":
+                        if isinstance(item, dict) and item.get('type') == 'progress':
+                            # Fixed public milestones only, never reasoning text or credentials.
+                            if item.get('stage') in ('queued', 'understanding', 'searching', 'composing', 'sources'):
+                                yield json.dumps({'type': 'progress', 'stage': item['stage']}) + '\n'
+                        elif isinstance(item, dict) and item.get("type") == "tool":
                             tool = item["tool"]
                             if tool["id"] not in tool_runs and len(tool_runs) >= 32:
                                 raise ValueError("Agent tool limit reached")

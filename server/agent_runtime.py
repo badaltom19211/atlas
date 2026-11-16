@@ -71,6 +71,7 @@ class RequestRuntime:
     oai: object = None
     vs_index: object = None
     http: object = None
+    progress: object = None
 
     def __post_init__(self):
         self.host = self.settings.databricks_host.rstrip('/')
@@ -83,6 +84,11 @@ class RequestRuntime:
             raise asyncio.CancelledError()
         if time.monotonic() >= self.deadline:
             raise TimeoutError('Agent deadline exceeded.')
+
+    def report(self, stage):
+        self.check()
+        if self.progress is not None:
+            self.progress(stage)
 
     def enrich_question(self, query):
         self.check()
@@ -126,7 +132,7 @@ class ScopedTracing:
 
 
 @contextmanager
-def open_runtime(settings, token, user_id, *, glossary=None, tracing=None, cancel=None):
+def open_runtime(settings, token, user_id, *, glossary=None, tracing=None, cancel=None, progress=None):
     """Create and close clients per call; all protected APIs use the explicit user token."""
     if not token:
         raise NotebookCallError('authentication', None)
@@ -136,6 +142,7 @@ def open_runtime(settings, token, user_id, *, glossary=None, tracing=None, cance
     runtime = RequestRuntime(settings, token, user_id, glossary,
                              tracing if tracing is not None else DisabledTracing(),
                              cancel if cancel is not None else threading.Event())
+    runtime.progress = progress
     with bind_runtime(runtime):
         runtime.http = httpx.Client(timeout=60)
         try:
