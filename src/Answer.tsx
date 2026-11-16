@@ -21,12 +21,11 @@ export function citationMarkdown(content: string, sources: CitationSource[]) {
   });
 }
 
-export function GroupedSources({ references, retrieved = false }: { references: CitationSource[]; retrieved?: boolean }) {
-  const { sql, documents, documentCount } = groupSources(references, 3, retrieved ? 'retrieved' : 'cited');
+export function GroupedSources({ references }: { references: CitationSource[] }) {
+  const { sql, documents, documentCount } = groupSources(references);
   if (!sql.length && !documents.length) return null;
-  return <details className="answer-sources grouped-sources" aria-label={retrieved ? 'Retrieved references' : 'Sources'}>
-    <summary className="sources-toggle"><FileText size={15} /> {retrieved ? 'Retrieved references' : 'Sources'} <span className="source-count">{sql.length + documentCount}</span><ChevronDown size={15} /></summary>
-    {retrieved && <p className="source-notice">These references were retrieved, but the answer did not identify which ones it used.</p>}
+  return <details className="answer-sources grouped-sources" aria-label="Sources">
+    <summary className="sources-toggle"><FileText size={15} /> Sources <span className="source-count">{sql.length + documentCount}</span><ChevronDown size={15} /></summary>
     <ul className="sources-list">
       {sql.map((source, index) => <li key={source.id} className="sql-source">
         <div className="source-heading"><Database size={15} /><span>SQL query {index + 1}</span></div>
@@ -39,7 +38,7 @@ export function GroupedSources({ references, retrieved = false }: { references: 
         {(source.pages || !sourceUrl(source.url)) && <small>{[source.pages, !sourceUrl(source.url) ? 'Link unavailable' : ''].filter(Boolean).join(' · ')}</small>}
       </li>)}
     </ul>
-    {documentCount > documents.length && <small className="source-limit">{retrieved ? `Showing ${documents.length} of ${documentCount} retrieved documents.` : `Showing the ${documents.length} most cited documents of ${documentCount}.`}</small>}
+    {documentCount > documents.length && <small className="source-limit">Showing the {documents.length} most cited documents of {documentCount}.</small>}
   </details>;
 }
 
@@ -57,7 +56,7 @@ export default function Answer({ content, references = [], sourceDisplay }: { co
         return safe ? <a href={safe} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>;
       },
     }}>{sourceDisplay === 'grouped' ? content : citationMarkdown(content, references)}</ReactMarkdown>
-    {sourceDisplay === 'grouped' ? <GroupedSources references={references} retrieved={!used.length && references.length > 0} /> : used.length > 0 && <div className="answer-sources">
+    {sourceDisplay === 'grouped' ? <GroupedSources references={references} /> : used.length > 0 && <div className="answer-sources">
       <button className="sources-toggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
         <FileText size={15} /> {used.length} {used.length === 1 ? 'source' : 'sources'} <ChevronDown size={15} className={expanded ? 'rotated' : ''} />
       </button>

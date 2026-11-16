@@ -42,10 +42,9 @@ shows an animated indicator and changes text every 4.5 seconds within the curren
 stage. It advances stages only on backend events, never on a simulated timer.
 These are workflow statuses, not model reasoning or token streaming.
 
-Source references are still stored with the answer in Lakebase. When retrieved
-references exist but the model omitted citation tags, they appear separately as
-**Retrieved references**, with an attribution warning. They are not marked as used
-evidence. Existing answers with no stored reference metadata cannot gain sources
+Source references are still stored with the answer in Lakebase. The UI displays
+only cited evidence under **Sources**; uncited references do not add another
+section or explanatory text. Existing answers with no stored reference metadata cannot gain sources
 retroactively; ask the question again after redeployment.
 
 Deploy the frontend and backend together to use these changes. Keep your existing

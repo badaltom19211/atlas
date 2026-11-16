@@ -18,10 +18,10 @@ function documentPages(sources: CitationSource[]): string {
   return merged.length ? `p. ${merged.map(([start, end]) => start === end ? start : `${start}–${end}`).join(', ')}` : '';
 }
 
-export function groupSources(references: CitationSource[], maxDocuments = 3, selection: 'cited' | 'retrieved' = 'cited') {
+export function groupSources(references: CitationSource[], maxDocuments = 3) {
   const sql = new Map<string, CitationSource>();
   const documents = new Map<string, DocumentSource>();
-  const used = references.filter(source => selection === 'retrieved' || source.used_in_answer).sort((a, b) => (a.citation_order ?? 0) - (b.citation_order ?? 0));
+  const used = references.filter(source => source.used_in_answer).sort((a, b) => (a.citation_order ?? 0) - (b.citation_order ?? 0));
   for (const source of used) {
     if (source.kind === 'genie') {
       if (!source.sql?.trim() || source.has_rows !== true) continue;

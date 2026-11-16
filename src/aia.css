@@ -361,7 +361,6 @@ mark { background: #ffe2a8; color: inherit; border-radius: 2px; }
 @keyframes thinking-orbit { to { transform: rotate(360deg); } }
 @keyframes thinking-breathe { 50% { transform: scale(.8); opacity: .65; } }
 @keyframes thinking-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-.source-notice { color: #806574; font-size: 12px; line-height: 1.5; margin: 10px 0; }
 @keyframes thinking-wave { 0%, 60%, 100% { transform: translateY(0) scale(.85); opacity: .35; } 30% { transform: translateY(-3px) scale(1.15); opacity: 1; } }
 .answer-sources { margin-top: 22px; }
 .sources-toggle { font-size: 11px; font-weight: 600; gap: 8px; padding: 8px 12px; border: 1px solid #eadfe8; border-radius: 10px; color: #7d647c; background: #fcf9fc; }
