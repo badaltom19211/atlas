@@ -24,7 +24,10 @@ function Chat() {
     fetch('/api/me').then(async r => { const data = await r.json(); if (!r.ok) throw new Error(data.detail); setName(data.name); })
       .catch(e => setError(e.message || 'Unable to verify sign-in.'));
   }, []);
-  useEffect(() => bottom.current?.scrollIntoView({ behavior: 'smooth' }), [items, pending]);
+  useEffect(() => {
+    // Keep the scroll method's return value out of React's effect cleanup slot.
+    bottom.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [items, pending]);
   const displayName = name.includes('@') ? name.split('@')[0].split(/[._]/).map(s => s[0]?.toUpperCase() + s.slice(1)).join(' ') : name;
   async function send() {
     const question = draft.trim();
