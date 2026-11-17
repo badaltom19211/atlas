@@ -1,4 +1,4 @@
-"""App-compatible export updated from deepagent.py (16 November 2026).
+"""App-compatible export; RAG synchronized with deepagent_v1.py (17 November 2026).
 
 The notebook's prompts, Genie/RAG tools and follow-up functions live here.
 App entry point: contract_assistant(message, token=..., history=..., settings=..., ...).
@@ -111,6 +111,9 @@ RERANKER = DatabricksReranker(columns_to_rerank=RERANK_COLUMNS)
 @mlflow.trace(name="embed_query", span_type=SpanType.EMBEDDING)
 def embed_query(query: str) -> list[float]:
     _runtime().check()
+    span = mlflow.get_current_active_span()
+    if span:
+        span.set_attribute("model", _runtime().settings.embedding_model)
     return _runtime().oai.embeddings.create(model=_runtime().settings.embedding_model, input=[query]).data[0].embedding
 
 def retrieve(query: str, k: int | None = None, rerank: bool = True) -> list[dict]:
@@ -134,6 +137,9 @@ def retrieve(query: str, k: int | None = None, rerank: bool = True) -> list[dict
 @mlflow.trace(name="rag_llm_answer", span_type=SpanType.CHAT_MODEL)
 def generate_answer(messages: list[dict]) -> str:
     _runtime().check()
+    span = mlflow.get_current_active_span()
+    if span:
+        span.set_attribute("model", _runtime().settings.agent_model)
     resp = _runtime().oai.chat.completions.create(model=_runtime().settings.agent_model, temperature=0.1, max_tokens=1200, messages=messages, **reasoning_options())
     return resp.choices[0].message.content
 
