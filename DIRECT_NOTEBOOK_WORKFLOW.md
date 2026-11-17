@@ -1,51 +1,3 @@
-# 17 November scope guard
-
-The app-compatible export now gates requests before constructing the Deep Agent.
-`_chat()` calls `understand_query()`: greeting-only messages such as `Hi` return
-the fixed greeting without an LLM call. Other messages use the existing single
-understanding call for scope, follow-up resolution and glossary enrichment.
-`out_of_scope` returns the fixed contract-only reply. An invalid or missing scope
-returns a clarification request. Neither path calls `ask()`, metadata extraction,
-Genie, document retrieval, embeddings or answer generation. Provider errors still
-surface as errors, not as out-of-scope answers. The classifier is model-based and
-must be checked against representative questions in the target workspace.
-
-Allowed contract questions retain the existing parallel Genie + RAG flow.
-Greeting-plus-contract questions are not intercepted by the greeting shortcut.
-Fresh unrelated questions remain unrelated even after a contract turn. Mixed or
-ambiguous requests ask for clarification. Newly stored greeting/out-of-scope/
-clarification turns do not replace the last contract turn used for follow-ups.
-Older replies without an intent marker retain their previous history behavior.
-
-`request_intent` and `retrieval_skipped` are stored in answer metadata and MLflow
-tags. They add no new text or source panel to the UI. Fixed replies contain no
-sources. Streaming emits `queued` and `understanding`, with no retrieval stages.
-The `contract_assistant` root trace is still an AGENT-type wrapper span; seeing
-that span alone does not mean the Deep Agent graph or a retrieval tool ran.
-
-Deploy these four backend files together (no app.yaml or schema changes):
-
-- `server/deep_agent_v1.py`: scope gate, fixed replies, lazy agent construction.
-- `server/notebook_output.py`: persist intent and skipped-retrieval metadata.
-- `server/app.py`: restore intent from owned stored history.
-- `server/notebook_bridge.py`: skip non-contract turns when rebuilding context.
-
-After deploying to AIA, start a new conversation and verify:
-
-| Input | Expected behavior |
-| --- | --- |
-| `Hi` | Fixed greeting; no model or retrieval call. |
-| `Who is the president of China?` | Fixed contract-only reply; one scope call; no Deep Agent, Genie or RAG. |
-| A valid contract question | Normal contract answer and cited sources. |
-| Contract question, then `Hi`, then `And its fees?` | Follow-up retains the contract subject. |
-
-In MLflow, the unrelated-query trace should contain `contract_assistant`,
-`contract_chat`, and `query_understanding`, tagged `request_intent=out_of_scope`
-and `retrieval_skipped=true`. It must not contain `contract_agent`,
-`query_genie`, `query_rag`, `retrieve`, or `extract_followup_metadata` spans.
-Automated tests verify this routing with fixture providers; a screenshot of the
-final answer cannot establish which tools executed in the live Azure deployment.
-
 # 13 November workflow update
 
 The app bridge now calls `contract_assistant()` in `server/deep_agent_v1.py`.
@@ -78,9 +30,7 @@ React message
   -> server/app.py (authenticate user; load owned conversation)
   -> server/notebook_bridge.py :: NotebookChatAgent.answer()
   -> asyncio.to_thread -> server/deep_agent_v1.py :: contract_assistant() -> chat()
-  -> _chat() -> understand_query() (scope + fresh/follow-up using supplied history)
-       -> greeting / out_of_scope / unclear: fixed reply, skip retrieval
-       -> contract: continue below
+  -> _chat() (fresh/follow-up resolution using supplied history)
   -> ask() -> build_contract_agent()'s Deep Agent graph.invoke()
   -> search_contracts()
   -> search_genie_and_rag()
@@ -94,8 +44,8 @@ React message
 ```
 
 The Deep Agent chooses tool calls according to the notebook's prompt. That prompt
-requires one `search_contracts` call for contract questions. Scope is checked in
-the existing understanding call before entering that graph. The notebook's prompts, metadata rules, follow-up interpretation,
+requires one `search_contracts` call for contract questions. There is no second
+outer router. The notebook's prompts, metadata rules, follow-up interpretation,
 Genie SSE parsing, reranking and source grouping are kept in the exported file.
 
 ## File responsibilities
@@ -132,7 +82,7 @@ result = chat(
 ```
 
 History excludes the new question. The notebook's follow-up algorithm uses the
-last complete contract question/answer (skipping marked non-contract turns), not the full transcript. `notebook_query` preserves
+last complete question/answer, not the full transcript. `notebook_query` preserves
 the resolved subject for the next follow-up. New conversations have no prior turn.
 Resetting a conversation means passing empty history; there is no global
 `CHAT_SESSIONS` to clear.
