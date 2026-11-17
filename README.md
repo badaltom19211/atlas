@@ -13,7 +13,7 @@ or [SETUP_NEW_WORKSPACE.md](SETUP_NEW_WORKSPACE.md) for a fresh workspace.
 
 The red-and-white interface includes private history, feedback, notes, saved
 responses, user name/initial, and title/message search with highlighted results.
-New answers show cited Genie SQL under View SQL and up to three grouped PDF links
+New answers show cited Genie SQL under View SQL and all cited PDF links grouped by document
 with known page ranges under Sources. Internal citation tags are validated before
 being removed from the displayed answer. Older chats keep their inline references.
 Existing chats, database tables and authentication remain compatible.

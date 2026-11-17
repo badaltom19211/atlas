@@ -18,7 +18,7 @@ function documentPages(sources: CitationSource[]): string {
   return merged.length ? `p. ${merged.map(([start, end]) => start === end ? start : `${start}–${end}`).join(', ')}` : '';
 }
 
-export function groupSources(references: CitationSource[], maxDocuments = 3) {
+export function groupSources(references: CitationSource[]) {
   const sql = new Map<string, CitationSource>();
   const documents = new Map<string, DocumentSource>();
   const used = references.filter(source => source.used_in_answer).sort((a, b) => (a.citation_order ?? 0) - (b.citation_order ?? 0));
@@ -39,5 +39,5 @@ export function groupSources(references: CitationSource[], maxDocuments = 3) {
   }
   const ranked = [...documents.values()].sort((a, b) => b.count - a.count);
   ranked.forEach(document => { document.pages = documentPages(document.references); });
-  return { sql: [...sql.values()], documents: ranked.slice(0, maxDocuments), documentCount: ranked.length };
+  return { sql: [...sql.values()], documents: ranked, documentCount: ranked.length };
 }

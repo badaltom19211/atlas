@@ -23,12 +23,15 @@ describe('notebook source presentation', () => {
     expect(reference.used_in_answer).toBe(false);
     expect(groupSources([reference]).documents).toHaveLength(0);
   });
-  it('groups by PDF, combines pages and ranks the three most cited files', () => {
+  it('groups by PDF, combines pages and shows every cited file in ranked order', () => {
     const sources = [doc('D1', 'first.pdf', 1), doc('D2', 'second.pdf', 4, 3), doc('D3', 'first.pdf', 2),
       doc('D4', 'third.pdf', 5), doc('D5', 'fourth.pdf', 9, 4)];
     const grouped = groupSources(sources);
     expect(grouped.documentCount).toBe(4);
-    expect(grouped.documents.map(d => d.name)).toEqual(['fourth.pdf', 'second.pdf', 'first.pdf']);
+    const html = renderToStaticMarkup(<Answer content="Answer." sourceDisplay="grouped" references={sources} />);
+    for (const name of ['first.pdf', 'second.pdf', 'third.pdf', 'fourth.pdf']) expect(html).toContain(name);
+    expect(html).not.toContain('most cited documents of');
+    expect(grouped.documents.map(d => d.name)).toEqual(['fourth.pdf', 'second.pdf', 'first.pdf', 'third.pdf']);
     expect(grouped.documents[2].pages).toBe('p. 1–2');
     expect(sources[0].id).toBe('D1');
   });

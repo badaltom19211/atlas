@@ -38,7 +38,6 @@ export function GroupedSources({ references }: { references: CitationSource[] })
         {(source.pages || !sourceUrl(source.url)) && <small>{[source.pages, !sourceUrl(source.url) ? 'Link unavailable' : ''].filter(Boolean).join(' · ')}</small>}
       </li>)}
     </ul>
-    {documentCount > documents.length && <small className="source-limit">Showing the {documents.length} most cited documents of {documentCount}.</small>}
   </details>;
 }
 
