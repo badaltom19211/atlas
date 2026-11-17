@@ -34,6 +34,7 @@ def format_result(result, question, runtime):
         answer += '\n\n' + ('Structured contract lookup' if stage == 'genie' else 'Contract document search') + ' is unavailable; those facts could not be checked.'
     output = {'sources': [], 'references': refs, 'source_display': 'grouped',
               'workflow': 'notebook_chat', 'standalone_question': result.get('standalone_question'), 'is_follow_up': bool(result.get('is_follow_up')),
+              'request_intent': result.get('request_intent', 'contract'), 'retrieval_skipped': bool(result.get('retrieval_skipped')),
               'notebook_query': str(result.get('standalone_question') or result.get('agent_query') or question)[:16000],
               'query_metadata': result.get('metadata') or {}, 'rag_query': (result.get('rag_query') or '')[:16000],
               'glossary_terms': result.get('glossary_terms', [])[:10],

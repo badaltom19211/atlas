@@ -49,6 +49,13 @@ shows an animated indicator and changes text every 4.5 seconds within the curren
 stage. It advances stages only on backend events, never on a simulated timer.
 These are workflow statuses, not model reasoning or token streaming.
 
+The 17 November scope guard stops greeting, unrelated and unclear requests before
+Deep Agent construction or contract retrieval. Simple greetings use no model;
+other requests classify scope in the existing understanding call. Fixed replies
+have no sources or search progress. Intent is persisted with the answer so these
+turns do not replace the previous contract context. See
+[scope guard deployment and checks](DIRECT_NOTEBOOK_WORKFLOW.md#17-november-scope-guard).
+
 Source references are still stored with the answer in Lakebase. The UI displays
 only cited evidence under **Sources**; uncited references do not add another
 section or explanatory text. Existing answers with no stored reference metadata cannot gain sources

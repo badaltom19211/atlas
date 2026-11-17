@@ -234,9 +234,12 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
                 continue
             item = {'role': message.role, 'content': message.content}
             if settings.agent_workflow == 'notebook' and message.role == 'assistant':
-                previous_query = message_json(message)['custom_outputs'].get('notebook_query')
+                notebook_output = message_json(message)['custom_outputs']
+                previous_query = notebook_output.get('notebook_query')
                 if isinstance(previous_query, str):
                     item['notebook_query'] = previous_query[:16000]
+                if notebook_output.get('request_intent') in ('contract', 'greeting', 'out_of_scope', 'unclear'):
+                    item['request_intent'] = notebook_output['request_intent']
             messages.append(item)
         if body.regenerate:
             last_user = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]["role"] == "user"), None)

@@ -12,6 +12,8 @@ def previous_turn(messages):
         raise ValueError('Missing user question.')
     for i in range(last - 1, -1, -1):
         if messages[i]['role'] == 'assistant':
+            if messages[i].get('request_intent') in ('greeting', 'out_of_scope', 'unclear'):
+                continue
             question = next((m['content'] for m in reversed(messages[:i]) if m['role'] == 'user'), None)
             if question is not None:
                 return messages[last]['content'], {'query': messages[i].get('notebook_query') or question, 'answer': messages[i]['content']}
