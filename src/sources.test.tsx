@@ -40,6 +40,26 @@ describe('notebook source presentation', () => {
     const second = { ...doc('D2', 'same.pdf', 4), url: 'https://workspace.example.test/other/same.pdf' };
     expect(groupSources([first, second]).documents).toHaveLength(2);
   });
+  it('shows one document and distinct pages across repeated chunks, sections and page links', () => {
+    const sources = [
+      { ...doc('D1', 'contract.pdf', 2), section: 'Fees', url: 'https://workspace.example.test/contract.pdf#page=2' },
+      { ...doc('D2', 'contract.pdf', 2), section: 'Renewal', url: 'https://workspace.example.test/contract.pdf#page=2&zoom=100' },
+      doc('D3', 'contract.pdf', 2),
+      { ...doc('D4', 'contract.pdf', 4), page_end: 5 },
+      { ...doc('D5', 'contract.pdf', 5), url: 'https://workspace.example.test/contract.pdf#page=5' },
+      { ...doc('D6', 'contract.pdf', 9), used_in_answer: false },
+    ];
+    const grouped = groupSources(sources);
+    expect(grouped.documentCount).toBe(1);
+    expect(grouped.documents).toHaveLength(1);
+    expect(grouped.documents[0].pages).toBe('p. 2, 4–5');
+    const html = renderToStaticMarkup(<Answer content="Answer." sourceDisplay="grouped" references={sources} />);
+    expect(html.match(/<li(?:\s|>)/g)).toHaveLength(1);
+    expect(html).toContain('class="source-count">1</span>');
+    expect(html).toContain('p. 2, 4–5');
+    expect(html).not.toContain('p. 9');
+    expect(sources[0].url).toContain('#page=2');
+  });
   it('uses citation order for ties and never fabricates missing page numbers', () => {
     const first = { ...doc('D1', 'first.pdf', 2), citation_order: 5 };
     const second = { ...doc('D2', 'second.pdf', 4), page_start: null, page_end: null, citation_order: 1 };
