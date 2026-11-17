@@ -22,6 +22,20 @@ with known page ranges under Sources. Internal citation tags are validated befor
 being removed from the displayed answer. Older chats keep their inline references.
 Existing chats, database tables and authentication remain compatible.
 
+New notebook answers also display cited Genie SQL result tables with Table, Bar,
+and Pie views. Category/value selectors use the returned rows; no model invents
+chart data and no extra Genie query runs. Tables paginate 10 rows at a time.
+Charts require complete numeric results and unique categories (up to 40 for bars,
+2–12 for pies; pies reject negative/all-zero values). Nulls remain in the table.
+At most 200 rows per result and 20,000 characters of result metadata are saved;
+partial results are labelled and stay table-only. Data survives history reloads
+and saved responses through the existing owned Lakebase tool receipt.
+`server/agent_runtime.py` captures the exported `query_genie()` return at its
+existing boundary; `server/genie_results.py` parses SQL result Markdown, and
+`server/notebook_output.py` attaches cited tables. Notebook business code is unchanged.
+Older answers without saved result rows keep their existing text/Markdown tables.
+No app.yaml changes or database migration are required; redeploy updated code.
+
 ## Runtime
 
 The backend imports `server/deep_agent_v1.py` and directly calls its `contract_assistant()`
