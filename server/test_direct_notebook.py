@@ -30,12 +30,6 @@ from .test_app import setup, create
 
 
 @pytest.fixture
-def allow_contract_scope(monkeypatch):
-    # Bridge/cancellation tests exercise the notebook boundary, not live classification.
-    monkeypatch.setattr('server.app_scope._classify_with_model', lambda *args: 'contract')
-
-
-@pytest.fixture
 def notebook(monkeypatch):
     from . import deep_agent_v1 as w
     @contextmanager
@@ -43,7 +37,7 @@ def notebook(monkeypatch):
         with bind_runtime(RequestRuntime(settings, token, user_id)) as scoped:
             yield scoped
     monkeypatch.setattr(w, 'open_runtime', runtime)
-    monkeypatch.setattr(w, '_llm_json', lambda system, query: {'follow_up': True, 'standalone_question': 'Acme fees?'} if system.startswith(w.QUERY_UNDERSTANDING_PROMPT) else {'vendor_name': ['Acme'], 'requested_fields': ['fees']})
+    monkeypatch.setattr(w, '_llm_json', lambda system, query: {'in_scope': True, 'message_type': 'contract', 'follow_up': True, 'standalone_question': 'Acme fees?'} if system.startswith(w.QUERY_UNDERSTANDING_PROMPT) else {'vendor_name': ['Acme'], 'requested_fields': ['fees']})
     monkeypatch.setattr(w, 'query_genie', lambda query: ('12 contracts [G1]', [{'id': 'G1', 'label': 'Count', 'sql': 'SELECT count(*) FROM contracts', 'has_rows': True}]))
     monkeypatch.setattr(w, 'query_rag', lambda query: ('30 days [D1]', [{'id': 'D1', 'label': 'Acme p. 4', 'document': 'Acme.pdf', 'page': 4, 'link': current_runtime().host + '/file.pdf'}]))
     class Agent:
@@ -123,7 +117,7 @@ def test_previous_turn_uses_persisted_resolved_subject_and_skips_current_questio
     assert previous_turn([{'role': 'user', 'content': 'Hi'}]) == ('Hi', None)
 
 
-def test_cancel_signals_direct_call_and_holds_slot_until_thread_finishes(monkeypatch, allow_contract_scope):
+def test_cancel_signals_direct_call_and_holds_slot_until_thread_finishes(monkeypatch):
     from . import deep_agent_v1 as w
     started, release = threading.Event(), threading.Event()
     seen = {}
@@ -334,7 +328,7 @@ def test_query_understanding_validates_glossary_and_preserves_fresh_question(mon
     calls=[]
     def model(system, user):
         calls.append(user)
-        return {'follow_up': True, 'standalone_question': 'Invented question',
+        return {'in_scope': True, 'message_type': 'contract', 'follow_up': True, 'standalone_question': 'Invented question',
                 'glossary_terms': ['fees', 'invented'], 'glossary_clarification': 'fees means charges'}
     monkeypatch.setattr(w, '_llm_json', model)
     with bind_runtime(RequestRuntime(Settings(), 'token', 'user', glossary=glossary)):

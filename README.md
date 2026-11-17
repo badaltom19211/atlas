@@ -49,13 +49,15 @@ shows an animated indicator and changes text every 4.5 seconds within the curren
 stage. It advances stages only on backend events, never on a simulated timer.
 These are workflow statuses, not model reasoning or token streaming.
 
-An app-only wrapper in `server/app_scope.py` now handles greetings and checks scope
-before calling the unchanged notebook. `HII` returns a fixed greeting; a subsequent
-valid contract question (or `Hii, ...contract question` in one message) still calls
-the notebook. Other messages add one user-authenticated model classification call.
-Non-contract replies have no sources or search progress. They remain in saved
-history but do not replace contract context. No notebook, app.yaml or schema change
-is needed; see [wrapper deployment details](DIRECT_NOTEBOOK_WORKFLOW.md#17-november-app-side-scope-wrapper).
+The latest `updated_nb.py` scope handling is integrated in `server/deep_agent_v1.py`;
+the separate `server/app_scope.py` wrapper is removed. The notebook recognizes
+simple greetings/thanks/help without model calls and combines other scope checks
+with query understanding. Non-contract replies skip the Deep Agent and retrieval;
+they remain in saved history without replacing contract context. Contract questions
+use the same notebook pipeline and signed-in user. The notebook's fallback after
+two failed classifications still allows retrieval; its Unicode small-talk cleanup
+also needs a developer correction. See [integration and developer follow-ups](DIRECT_NOTEBOOK_WORKFLOW.md#17-november-latest-notebook-integration).
+No app.yaml or schema change is required.
 
 Source references are still stored with the answer in Lakebase. The UI displays
 only cited evidence under **Sources**; uncited references do not add another

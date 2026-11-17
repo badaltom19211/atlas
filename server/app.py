@@ -238,8 +238,13 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
                 previous_query = notebook_output.get('notebook_query')
                 if isinstance(previous_query, str):
                     item['notebook_query'] = previous_query[:16000]
-                if notebook_output.get('app_scope_intent') in ('contract', 'greeting', 'out_of_scope', 'unclear'):
-                    item['app_scope_intent'] = notebook_output['app_scope_intent']
+                if isinstance(notebook_output.get('in_scope'), bool):
+                    item['in_scope'] = notebook_output['in_scope']
+                if notebook_output.get('message_type') in ('contract', 'greeting', 'thanks', 'goodbye', 'help', 'off_topic'):
+                    item['message_type'] = notebook_output['message_type']
+                # Compatibility with history written by the retired app-only wrapper.
+                if 'in_scope' not in item and notebook_output.get('app_scope_intent') in ('contract', 'greeting', 'out_of_scope', 'unclear'):
+                    item['in_scope'] = notebook_output['app_scope_intent'] == 'contract'
             messages.append(item)
         if body.regenerate:
             last_user = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]["role"] == "user"), None)

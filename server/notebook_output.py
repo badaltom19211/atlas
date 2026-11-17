@@ -29,11 +29,16 @@ def format_result(result, question, runtime):
     if len(runtime.failures) == 2:
         raise next(iter(runtime.failures.values()))
     refs = result.get('references', [])
+    understanding = result.get('glossary') or {}
     answer = result['answer'].strip() or 'I could not find supporting information for this question in the contracts.'
     for stage in runtime.failures:
         answer += '\n\n' + ('Structured contract lookup' if stage == 'genie' else 'Contract document search') + ' is unavailable; those facts could not be checked.'
     output = {'sources': [], 'references': refs, 'source_display': 'grouped',
               'workflow': 'notebook_chat', 'standalone_question': result.get('standalone_question'), 'is_follow_up': bool(result.get('is_follow_up')),
+              'in_scope': result.get('in_scope', True), 'message_type': result.get('message_type', 'contract'),
+              'classification_status': understanding.get('classification_status'),
+              'classification_error': understanding.get('classification_error'),
+              'out_of_scope_reason': result.get('out_of_scope_reason'),
               'notebook_query': str(result.get('standalone_question') or result.get('agent_query') or question)[:16000],
               'query_metadata': result.get('metadata') or {}, 'rag_query': (result.get('rag_query') or '')[:16000],
               'glossary_terms': result.get('glossary_terms', [])[:10],

@@ -67,7 +67,7 @@ class ContractSourcesUnavailable(RuntimeError):
 
 class NotebookCallError(RuntimeError):
     LABELS = {'authentication': 'Notebook user authentication',
-              'workflow': 'Notebook workflow', 'genie': 'Genie response', 'scope': 'App question classification',
+              'workflow': 'Notebook workflow', 'genie': 'Genie response',
               'documents': 'Contract document search', 'tracing': 'MLflow experiment access'}
 
     def __init__(self, stage, status):

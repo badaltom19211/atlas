@@ -12,7 +12,7 @@ from .agent_runtime import RequestRuntime, bind_runtime
 from .citations import check_citations, prepare_source_display
 from .config import Settings
 from .notebook_bridge import NotebookChatAgent
-from .test_direct_notebook import notebook, invoke_chat, payload, allow_contract_scope
+from .test_direct_notebook import notebook, invoke_chat, payload
 from .test_app import setup, create
 
 
@@ -146,7 +146,7 @@ def test_latest_notebook_reasoning_settings_reach_all_model_calls(monkeypatch):
         assert notebook.reasoning_options() == {}
 
 
-def test_progress_is_streamed_before_answer_and_is_not_persisted_as_a_tool(monkeypatch, allow_contract_scope):
+def test_progress_is_streamed_before_answer_and_is_not_persisted_as_a_tool(monkeypatch):
     from . import deep_agent_v1 as notebook
     def chat(question, **kwargs):
         kwargs['progress']('understanding')
@@ -165,7 +165,7 @@ def test_progress_is_streamed_before_answer_and_is_not_persisted_as_a_tool(monke
     asyncio.run(run())
 
 
-def test_stream_cancellation_stops_progress_without_releasing_an_active_worker(monkeypatch, allow_contract_scope):
+def test_stream_cancellation_stops_progress_without_releasing_an_active_worker(monkeypatch):
     from . import deep_agent_v1 as notebook
     started, release = threading.Event(), threading.Event()
     seen = {}
