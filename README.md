@@ -36,6 +36,13 @@ export includes Markdown, `%pip`, notebook credentials and demo calls, so it is
 not copied over the importable app module verbatim. App identity isolation,
 owned history, cancellation and optional app-principal tracing are preserved.
 
+The 17 November `deepagent_v1.py` attachment contains only the RAG cell. Its prompt,
+hybrid reranking, short document/section labels and direct PDF links already match
+`server/deep_agent_v1.py`. The remaining trace metadata is now synchronized: embedding
+and RAG answer spans record their configured model names per request. No additional
+notebook file, configuration change or database migration is needed. MLflow still
+requires an existing configured experiment; this update does not enable it by itself.
+
 The backend now sends fixed progress events while the notebook runs:
 `queued → understanding → searching → composing → sources`. `src/Thinking.tsx`
 shows an animated indicator and changes text every 4.5 seconds within the current

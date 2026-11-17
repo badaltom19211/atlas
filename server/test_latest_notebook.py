@@ -1,7 +1,8 @@
-"""Regression coverage for the 16 November notebook and streamed UI progress."""
+"""Regression coverage for the latest notebook snippets and streamed UI progress."""
 import asyncio
 import json
 import threading
+from contextlib import contextmanager
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -13,6 +14,92 @@ from .config import Settings
 from .notebook_bridge import NotebookChatAgent
 from .test_direct_notebook import notebook, invoke_chat, payload
 from .test_app import setup, create
+
+
+def test_rag_model_trace_attributes_use_each_requests_configured_models():
+    from . import deep_agent_v1 as notebook
+    spans, active, calls = [], [], []
+
+    class Span:
+        def __init__(self, name):
+            self.name, self.attributes = name, {}
+        def set_inputs(self, value): pass
+        def set_outputs(self, value): pass
+        def set_attribute(self, name, value): self.attributes[name] = value
+
+    class Tracing:
+        @contextmanager
+        def start_span(self, name, **kwargs):
+            span = Span(name)
+            spans.append(span)
+            active.append(span)
+            try:
+                yield span
+            finally:
+                active.pop()
+        def get_current_active_span(self): return active[-1] if active else None
+
+    def embed(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(data=[SimpleNamespace(embedding=[0.1, 0.2])])
+    def complete(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='Supported answer.'))])
+
+    for name in ('alice', 'bob'):
+        settings = Settings(agent_model=f'system.ai.{name}-chat', embedding_model=f'system.ai.{name}-embed', reasoning_effort='')
+        runtime = RequestRuntime(settings, f'{name}-private-token', name, tracing=Tracing())
+        runtime.oai = SimpleNamespace(embeddings=SimpleNamespace(create=embed),
+            chat=SimpleNamespace(completions=SimpleNamespace(create=complete)))
+        with bind_runtime(runtime):
+            assert notebook.embed_query('Contract question') == [0.1, 0.2]
+            assert notebook.generate_answer([]) == 'Supported answer.'
+
+    assert [(s.name, s.attributes['model']) for s in spans] == [
+        ('embed_query', 'system.ai.alice-embed'), ('rag_llm_answer', 'system.ai.alice-chat'),
+        ('embed_query', 'system.ai.bob-embed'), ('rag_llm_answer', 'system.ai.bob-chat')]
+    assert [c['model'] for c in calls] == [s.attributes['model'] for s in spans]
+    assert all(list(s.attributes) == ['model'] for s in spans)
+
+
+def test_supplied_rag_cell_keeps_direct_pdf_link_and_cited_page_in_ui_metadata(monkeypatch):
+    from urllib.parse import quote
+    from . import deep_agent_v1 as notebook
+    from .notebook_output import normalize_sources
+    host = 'https://workspace.example.test'
+    folder = host + '/explore/data/volumes/catalog/schema/docs?volumePath=%2FVolumes%2Fcatalog%2Fschema%2Fdocs%2FInput%2F'
+    doc = 'Example - Order Form #1 - signed.pdf'
+    chunk = {'document_title': doc, 'section_title': '4.6 Coterminous Order Form. This agreement continues.',
+             'page_start': 4, 'contextualized_text': 'The notice period is 30 days.',
+             'citation': f'[{doc} | p. 4]({folder})'}
+    monkeypatch.setattr(notebook, 'retrieve', lambda query, k: [dict(chunk), dict(chunk)])
+    seen = []
+    monkeypatch.setattr(notebook, 'generate_answer', lambda messages: seen.extend(messages) or 'Notice is 30 days [D1].')
+    with bind_runtime(RequestRuntime(Settings(databricks_host=host), 'fixture', 'alice')):
+        answer, sources = notebook.query_rag('What is the notice period?')
+    assert len(sources) == 1
+    assert sources[0]['link'] == folder + quote(doc, safe='')
+    assert sources[0]['label'] == 'Example - Order Form #1, 4.6 Coterminous Order Form, p. 4'
+    assert seen[1]['content'].count('[D1]') == 2
+    refs = normalize_sources(sources, host)
+    assert prepare_source_display(answer, refs)
+    assert refs[0]['used_in_answer'] is True
+    assert refs[0]['url'] == folder + quote(doc, safe='')
+    assert refs[0]['page_start'] == 4
+    assert notebook._file_link(sources[0]['link'], doc) == sources[0]['link']
+    assert notebook._file_link(None, doc) is None
+
+
+def test_rag_without_passages_does_not_generate_answer_or_sources(monkeypatch):
+    from . import deep_agent_v1 as notebook
+    monkeypatch.setattr(notebook, 'retrieve', lambda query, k: [])
+    def unexpected(messages):
+        raise AssertionError('No LLM answer should be generated without retrieved passages.')
+    monkeypatch.setattr(notebook, 'generate_answer', unexpected)
+    with bind_runtime(RequestRuntime(Settings(), 'fixture', 'alice')):
+        answer, sources = notebook.query_rag('Unknown contract')
+    assert answer == 'No relevant contract document passages were retrieved.'
+    assert sources == []
 
 
 @pytest.mark.parametrize('tags', ['【G1】 and ［D1］', '[G1, D1]', '【G1; D1】'])
