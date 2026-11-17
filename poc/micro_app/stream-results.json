@@ -1,0 +1,185 @@
+{
+  "identity_verified": true,
+  "anonymous_http": 401,
+  "react_html_and_bundle_http": 200,
+  "history_mode": "session-only",
+  "cases": [
+    {
+      "case": "bike_count",
+      "http": 200,
+      "wall_seconds": 18.06,
+      "progress": [
+        {
+          "stage": "queued",
+          "seconds": 2.06
+        },
+        {
+          "stage": "understanding",
+          "seconds": 2.12
+        },
+        {
+          "stage": "searching",
+          "seconds": 4.73
+        },
+        {
+          "stage": "composing",
+          "seconds": 17.57
+        },
+        {
+          "stage": "sources",
+          "seconds": 18.05
+        }
+      ],
+      "progress_passed": true,
+      "app_seconds": 15.95,
+      "selected_tools": [
+        "genie"
+      ],
+      "failed_tools": [],
+      "source_kinds": [
+        "genie"
+      ],
+      "used_source_count": 1,
+      "sql_sources": 1,
+      "follow_up": false,
+      "boot_id": "8221ded3-ac45-4f1d-af37-dcf3c85fe43c",
+      "routing_passed": true,
+      "expected_count_7_found": true
+    },
+    {
+      "case": "document",
+      "http": 200,
+      "wall_seconds": 7.6,
+      "progress": [
+        {
+          "stage": "queued",
+          "seconds": 2.31
+        },
+        {
+          "stage": "understanding",
+          "seconds": 2.43
+        },
+        {
+          "stage": "searching",
+          "seconds": 4.79
+        },
+        {
+          "stage": "composing",
+          "seconds": 5.86
+        },
+        {
+          "stage": "sources",
+          "seconds": 7.59
+        }
+      ],
+      "progress_passed": true,
+      "app_seconds": 5.25,
+      "selected_tools": [
+        "projects"
+      ],
+      "failed_tools": [],
+      "source_kinds": [
+        "document"
+      ],
+      "used_source_count": 1,
+      "sql_sources": 0,
+      "follow_up": false,
+      "boot_id": "8221ded3-ac45-4f1d-af37-dcf3c85fe43c",
+      "routing_passed": true
+    },
+    {
+      "case": "followup",
+      "http": 200,
+      "wall_seconds": 20.74,
+      "progress": [
+        {
+          "stage": "queued",
+          "seconds": 2.15
+        },
+        {
+          "stage": "understanding",
+          "seconds": 2.18
+        },
+        {
+          "stage": "searching",
+          "seconds": 3.57
+        },
+        {
+          "stage": "composing",
+          "seconds": 3.87
+        },
+        {
+          "stage": "sources",
+          "seconds": 20.73
+        }
+      ],
+      "progress_passed": true,
+      "app_seconds": 18.6,
+      "selected_tools": [
+        "projects"
+      ],
+      "failed_tools": [],
+      "source_kinds": [
+        "document"
+      ],
+      "used_source_count": 1,
+      "sql_sources": 0,
+      "follow_up": true,
+      "boot_id": "8221ded3-ac45-4f1d-af37-dcf3c85fe43c",
+      "routing_passed": true,
+      "subject_retained": true
+    },
+    {
+      "case": "mixed",
+      "http": 200,
+      "wall_seconds": 15.88,
+      "progress": [
+        {
+          "stage": "queued",
+          "seconds": 2.05
+        },
+        {
+          "stage": "understanding",
+          "seconds": 2.11
+        },
+        {
+          "stage": "searching",
+          "seconds": 3.9
+        },
+        {
+          "stage": "composing",
+          "seconds": 12.6
+        },
+        {
+          "stage": "sources",
+          "seconds": 15.86
+        }
+      ],
+      "progress_passed": true,
+      "app_seconds": 13.82,
+      "selected_tools": [
+        "genie",
+        "projects"
+      ],
+      "failed_tools": [],
+      "source_kinds": [
+        "document",
+        "genie"
+      ],
+      "used_source_count": 6,
+      "sql_sources": 1,
+      "follow_up": false,
+      "boot_id": "8221ded3-ac45-4f1d-af37-dcf3c85fe43c",
+      "routing_passed": true,
+      "expected_count_7_found": true
+    }
+  ],
+  "all_passed": true,
+  "not_tested": [
+    "Lakebase integration (resource attachment rejected)",
+    "MLflow trace ingestion",
+    "second real user identity isolation",
+    "browser visual QA",
+    "load testing"
+  ]
+}

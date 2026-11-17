@@ -22,12 +22,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--profile', default='genie-react-workspace')
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--stream', action='store_true', help='Measure live workflow progress delivery.')
     args = parser.parse_args()
     workspace = WorkspaceClient(profile=args.profile)
     if workspace.config.host.rstrip('/') != HOST:
         raise ValueError('This probe is restricted to the Koantek POC workspace.')
     headers = workspace.config.authenticate()
     headers['x-atlas-request'] = '1'
+    if args.stream:
+        headers['Accept'] = 'application/x-ndjson'
     me = requests.get(URL + '/api/me', headers=headers, timeout=60)
     assert me.status_code == 200, f'Identity endpoint returned {me.status_code}: {me.text[:300]}'
     anonymous = requests.get(URL + '/api/me', timeout=30, allow_redirects=False)
@@ -41,14 +44,33 @@ def main():
 
     def ask(name, question, expected, history=None):
         start = time.monotonic()
-        response = requests.post(URL + '/api/chat', headers=headers, timeout=210,
+        response = requests.post(URL + '/api/chat', headers=headers, timeout=210, stream=args.stream,
                                  json={'question': question, 'history': history or [], 'session_id': str(uuid4())})
         record = {'case': name, 'http': response.status_code, 'wall_seconds': round(time.monotonic()-start, 2)}
         if response.status_code != 200:
             record['error'] = response.json().get('detail', 'Request failed')
             print(json.dumps(record), flush=True)
             return record, None
-        body = response.json()
+        if args.stream:
+            progress, body = [], None
+            try:
+                for line in response.iter_lines(chunk_size=1):
+                    if not line: continue
+                    event = json.loads(line)
+                    if event.get('type') == 'progress':
+                        progress.append({'stage': event['stage'], 'seconds': round(time.monotonic()-start, 2)})
+                    elif event.get('type') == 'done': body = event
+                    elif event.get('type') == 'error': record['error'] = event['message']
+            finally:
+                response.close()
+            record['progress'] = progress
+            record['wall_seconds'] = round(time.monotonic()-start, 2)
+            record['progress_passed'] = [p['stage'] for p in progress] == ['queued', 'understanding', 'searching', 'composing', 'sources'] and progress[0]['seconds'] < record['wall_seconds']
+            if body is None:
+                print(json.dumps(record), flush=True)
+                return record, None
+        else:
+            body = response.json()
         meta = body['custom_outputs']
         refs = meta.get('references', [])
         record.update(app_seconds=body['elapsed_seconds'], selected_tools=meta['selected_tools'],
@@ -84,7 +106,7 @@ def main():
     checks['all_passed'] = len(checks['cases']) == 4 and all(
         r['http'] == 200 and r.get('routing_passed') and not r.get('failed_tools')
         and r.get('used_source_count', 0) > 0 and r.get('expected_count_7_found', True)
-        and r.get('subject_retained', True) for r in checks['cases'])
+        and r.get('subject_retained', True) and r.get('progress_passed', True) for r in checks['cases'])
     checks['not_tested'] = ['Lakebase integration (resource attachment rejected)', 'MLflow trace ingestion',
                             'second real user identity isolation', 'browser visual QA', 'load testing']
     args.output.write_text(json.dumps(checks, indent=2), encoding='utf-8')

@@ -1,7 +1,9 @@
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowUp, Plus, Copy, Check } from 'lucide-react';
+import { ArrowUp, Plus, Copy, Check, Square } from 'lucide-react';
 import Answer from '../../../src/Answer';
+import Thinking, { type ProgressStage } from '../../../src/Thinking';
+import { readPocResponse } from './stream';
 import type { CitationSource } from '../../../src/types';
 import './poc.css';
 
@@ -12,6 +14,8 @@ function Chat() {
   const [items, setItems] = useState<Item[]>([]);
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState(false);
+  const [progress, setProgress] = useState<ProgressStage>('queued');
+  const request = useRef<AbortController | null>(null);
   const [error, setError] = useState('');
   const [session, setSession] = useState(() => crypto.randomUUID());
   const [copied, setCopied] = useState<number | null>(null);
@@ -24,18 +28,18 @@ function Chat() {
   const displayName = name.includes('@') ? name.split('@')[0].split(/[._]/).map(s => s[0]?.toUpperCase() + s.slice(1)).join(' ') : name;
   async function send() {
     const question = draft.trim();
-    if (!question || pending || !name) return;
+    if (!question || request.current || !name) return;
+    const controller = new AbortController(); request.current = controller;
     const history = items.slice(-6).map(({ role, content, notebook_query }) => ({ role, content, notebook_query }));
-    setItems(previous => [...previous, { role: 'user', content: question }]); setDraft(''); setError(''); setPending(true);
+    setItems(previous => [...previous, { role: 'user', content: question }]); setDraft(''); setError(''); setPending(true); setProgress('queued');
     try {
-      const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-atlas-request': '1' },
+      const response = await fetch('/api/chat', { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json', 'x-atlas-request': '1', Accept: 'application/x-ndjson' },
         body: JSON.stringify({ question, history, session_id: session }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'The request could not be completed.');
+      const result = await readPocResponse(response, setProgress);
       setItems(previous => [...previous, { role: 'assistant', content: result.answer, refs: result.custom_outputs.references,
         notebook_query: result.custom_outputs.notebook_query, seconds: result.elapsed_seconds }]);
-    } catch (e) { setError(e instanceof Error ? e.message : 'The request could not be completed.'); }
-    finally { setPending(false); }
+    } catch (e) { setError(controller.signal.aborted ? 'Response stopped.' : e instanceof Error ? e.message : 'The request could not be completed.'); }
+    finally { setPending(false); request.current = null; }
   }
   return <main className="poc-shell">
     <header><div className="brand">AIA<span>Micro App POC</span></div><div className="profile"><span>{displayName || 'Signing in…'}</span><b>{displayName[0]?.toUpperCase() || '?'}</b></div></header>
@@ -47,12 +51,12 @@ function Chat() {
         <div className="body">{item.role === 'assistant' ? <Answer content={item.content} references={item.refs} sourceDisplay="grouped" /> : item.content}</div>
         {item.role === 'assistant' && <button className="copy" aria-label="Copy answer" onClick={async () => { try { await navigator.clipboard.writeText(item.content); setCopied(index); } catch { setError('Unable to copy. Select the answer text to copy it.'); } }}>{copied === index ? <Check size={16} /> : <Copy size={16} />}</button>}
       </article>)}
-      {pending && <div className="thinking" role="status"><span>Thinking</span><i /><i /><i /></div>}
+      {pending && <Thinking stage={progress} searchLabel="Searching bike data and projects" />}
       {error && <div className="error" role="alert">{error}</div>}<div ref={bottom} />
     </section>
     <form className="composer" onSubmit={e => { e.preventDefault(); void send(); }}><textarea aria-label="Your question" placeholder="Message AIA…" value={draft} maxLength={12000} disabled={pending}
       onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
-      <div><small>Enter to send · Shift + Enter for a new line</small><button aria-label="Send question" disabled={pending || !name || !draft.trim()}><ArrowUp size={21} /></button></div>
+      <div><small>Enter to send · Shift + Enter for a new line</small>{pending ? <button type="button" aria-label="Stop response" onClick={() => request.current?.abort()}><Square size={18} /></button> : <button aria-label="Send question" disabled={!name || !draft.trim()}><ArrowUp size={21} /></button>}</div>
     </form><footer>Review the sources before using an answer.</footer>
   </main>;
 }

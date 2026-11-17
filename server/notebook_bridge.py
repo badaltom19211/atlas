@@ -25,6 +25,39 @@ class NotebookChatAgent(ContractRAGAgent):
         self.settings = settings
         self.token, self.user_id, self.conversation_id = token, user_id, conversation_id
         self.glossary, self.tracing, self.slots = glossary, tracing, slots
+        self.progress = None
+
+    async def stream(self, messages, style='balanced'):
+        """Forward actual notebook milestones while its synchronous call runs."""
+        events = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+        active = True
+
+        def report(stage):
+            if active and not loop.is_closed() and stage in ('understanding', 'searching', 'composing', 'sources'):
+                loop.call_soon_threadsafe(events.put_nowait, {'type': 'progress', 'stage': stage})
+
+        self.progress = report
+
+        async def produce():
+            try:
+                async for item in super(NotebookChatAgent, self).stream(messages, style):
+                    await events.put(item)
+            finally:
+                await events.put(None)
+
+        worker = asyncio.create_task(produce())
+        try:
+            yield {'type': 'progress', 'stage': 'queued'}
+            while (item := await events.get()) is not None:
+                yield item
+            await worker  # Propagate errors after the tool receipt has been forwarded.
+        finally:
+            active = False
+            self.progress = None
+            if not worker.done():
+                worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
 
     async def answer(self, messages):
         question, previous = previous_turn(messages)
@@ -66,4 +99,4 @@ class NotebookChatAgent(ContractRAGAgent):
         from .deep_agent_v1 import contract_assistant as chat
         return chat(payload['question'], token=payload['token'], history=payload['history'],
                     settings=self.settings, user_id=payload['user_id'], session_id=payload['session_id'],
-                    glossary=self.glossary, tracing=self.tracing, cancel=cancel)
+                    glossary=self.glossary, tracing=self.tracing, cancel=cancel, progress=self.progress)

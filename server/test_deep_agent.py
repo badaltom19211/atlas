@@ -92,7 +92,7 @@ def test_notebook_workflow_calls_both_once_reranks_and_merges_with_valid_sources
     assert 'Search metadata:' in query['query_text']
     assert all(token == 'Bearer user-token' for _, _, token in fixture.calls)
     models = [body['model'] for path, body, _ in fixture.calls if '/ai-gateway/' in path]
-    assert 'system.ai.gte-large-en' in models and 'system.ai.meta-llama-3-3-70b-instruct' in models
+    assert 'system.ai.gte-large-en' in models and 'system.ai.gpt-oss-120b' in models
     assert output['references'][0]['sql'] == 'SELECT count(*) FROM catalog.schema.contracts'
     assert output['references'][1]['used_in_answer'] is True
     assert output['references'][2]['used_in_answer'] is False

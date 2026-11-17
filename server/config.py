@@ -25,7 +25,8 @@ class Settings:
     embedding_endpoint: str = env('DATABRICKS_EMBEDDING_ENDPOINT')
     answer_endpoint: str = env('DATABRICKS_ANSWER_ENDPOINT')
     model_api: str = env('DATABRICKS_MODEL_API', 'gateway')
-    agent_model: str = env('DATABRICKS_AGENT_MODEL', 'system.ai.meta-llama-3-3-70b-instruct')
+    agent_model: str = env('DATABRICKS_AGENT_MODEL', 'system.ai.gpt-oss-120b')
+    reasoning_effort: str = env('DATABRICKS_REASONING_EFFORT')
     embedding_model: str = env('DATABRICKS_EMBEDDING_MODEL', 'system.ai.gte-large-en')
     genie_agent_id: str = env('DATABRICKS_GENIE_AGENT_ID')
     glossary_dir: str = env('ATLAS_GLOSSARY_DIR')
@@ -55,6 +56,8 @@ class Settings:
         return self.auth_mode == 'databricks-app'
 
     def validate(self):
+        if self.reasoning_effort not in ('', 'low', 'medium', 'high'):
+            raise RuntimeError('DATABRICKS_REASONING_EFFORT must be low, medium, high or empty.')
         if self.agent_workflow not in ('notebook', 'adapted'):
             raise RuntimeError('ATLAS_AGENT_WORKFLOW must be notebook or adapted.')
         if self.agent_workflow == 'notebook' and self.model_api != 'gateway':

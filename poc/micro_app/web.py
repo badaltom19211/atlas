@@ -4,6 +4,7 @@ History is held only by the current browser page and explicitly passed per call.
 The production API and its Lakebase requirement remain unchanged.
 """
 import asyncio
+import json
 import os
 import re
 import time
@@ -14,7 +15,7 @@ from urllib.parse import urlparse
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import Literal
@@ -93,7 +94,7 @@ def build_app():
         return {'status': 'ok', 'mode': 'koantek-session-poc', 'boot_id': boot}
 
     @app.post('/api/chat')
-    async def chat(body: Question, auth=Depends(identity)):
+    async def chat(body: Question, request: Request, auth=Depends(identity)):
         if not body.question.strip():
             raise HTTPException(422, 'Question must not be blank.')
         user, token = auth
@@ -104,6 +105,28 @@ def build_app():
         agent = KoantekPocAgent(settings, token=token, user_id=str(user.id),
                                conversation_id=body.session_id, slots=slots)
         start = time.monotonic()
+        if 'application/x-ndjson' in request.headers.get('accept', ''):
+            async def stream():
+                answer, metadata = '', {}
+                try:
+                    async with asyncio.timeout(settings.agent_timeout_seconds):
+                        async for item in agent.stream(messages):
+                            if isinstance(item, dict) and item.get('type') == 'progress':
+                                yield json.dumps(item) + '\n'
+                            elif isinstance(item, dict) and item.get('type') == 'tool':
+                                tool = item['tool']
+                                if tool['status'] == 'completed':
+                                    metadata = json.loads(tool['output'])['custom_outputs']
+                            elif isinstance(item, str):
+                                answer += item
+                    if not answer:
+                        raise ValueError('Empty POC response.')
+                    yield json.dumps({'type': 'done', 'answer': answer, 'custom_outputs': metadata,
+                                      'elapsed_seconds': round(time.monotonic() - start, 2), 'boot_id': boot}) + '\n'
+                except Exception as error:
+                    yield json.dumps({'type': 'error', 'message': public_failure(error)}) + '\n'
+            return StreamingResponse(stream(), media_type='application/x-ndjson',
+                                     headers={'X-Accel-Buffering': 'no', 'Cache-Control': 'no-store'})
         try:
             async with asyncio.timeout(settings.agent_timeout_seconds):
                 answer, metadata = await agent.answer(messages)

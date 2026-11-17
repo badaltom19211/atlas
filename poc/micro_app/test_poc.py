@@ -6,6 +6,7 @@ import pytest
 
 from poc.micro_app import koantek_agent as agent
 from server.databricks_errors import NotebookCallError
+from server.agent_runtime import bind_runtime
 
 
 def test_project_results_use_manifest_order_and_bound_excerpts():
@@ -22,17 +23,18 @@ def test_project_index_mismatch_does_not_invent_documents():
 @pytest.fixture
 def runtime(monkeypatch):
     state = SimpleNamespace(selected=['genie', 'projects'], answer='Seven categories [G1]. A documented project [D1].',
-                            understanding=[])
-    settings = SimpleNamespace(agent_model='fixture-model')
+                            understanding=[], stages=[])
+    settings = SimpleNamespace(agent_model='fixture-model', reasoning_effort='')
     def generate(**kwargs):
         state.model_request = kwargs
         return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=state.answer))])
     current = SimpleNamespace(host='https://workspace.example.test', token='fixture-token', settings=settings,
-                              check=lambda: None,
+                              check=lambda: None, report=state.stages.append,
                               oai=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=generate))))
     @contextmanager
     def open_runtime(*args, **kwargs):
-        yield current
+        with bind_runtime(current):
+            yield current
     def understand(question, previous_question, previous_answer):
         state.understanding.append((question, previous_question, previous_answer))
         return {'standalone_question': 'Resolved fixture question', 'follow_up': bool(previous_question)}
@@ -57,6 +59,14 @@ def test_mixed_sources_remain_distinct_and_pages_are_not_invented(runtime):
     assert '[G1]' not in result['answer']
     assert result['custom_outputs']['notebook_query'] == 'Resolved fixture question'
     assert 'not a complete inventory' in result['answer']
+    assert runtime.stages == ['understanding', 'searching', 'composing', 'sources']
+
+
+def test_latest_notebook_unicode_citations_work_in_poc(runtime):
+    runtime.answer = 'Seven categories 【G1】. A documented project ［D1］.'
+    result = agent.run_chat(runtime.payload, runtime.settings)
+    assert all(s['used_in_answer'] for s in result['custom_outputs']['references'])
+    assert '【' not in result['answer'] and '［' not in result['answer']
 
 
 def test_failed_genie_is_explicit_and_has_no_fabricated_sql(runtime, monkeypatch):
