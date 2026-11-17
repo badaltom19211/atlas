@@ -49,6 +49,14 @@ shows an animated indicator and changes text every 4.5 seconds within the curren
 stage. It advances stages only on backend events, never on a simulated timer.
 These are workflow statuses, not model reasoning or token streaming.
 
+An app-only wrapper in `server/app_scope.py` now handles greetings and checks scope
+before calling the unchanged notebook. `HII` returns a fixed greeting; a subsequent
+valid contract question (or `Hii, ...contract question` in one message) still calls
+the notebook. Other messages add one user-authenticated model classification call.
+Non-contract replies have no sources or search progress. They remain in saved
+history but do not replace contract context. No notebook, app.yaml or schema change
+is needed; see [wrapper deployment details](DIRECT_NOTEBOOK_WORKFLOW.md#17-november-app-side-scope-wrapper).
+
 Source references are still stored with the answer in Lakebase. The UI displays
 only cited evidence under **Sources**; uncited references do not add another
 section or explanatory text. Existing answers with no stored reference metadata cannot gain sources

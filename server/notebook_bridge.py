@@ -3,6 +3,7 @@ import asyncio
 import threading
 from .notebook_agent import ContractRAGAgent
 from .databricks_errors import NotebookCallError
+from .app_scope import contract_history
 
 
 def previous_turn(messages):
@@ -12,6 +13,8 @@ def previous_turn(messages):
         raise ValueError('Missing user question.')
     for i in range(last - 1, -1, -1):
         if messages[i]['role'] == 'assistant':
+            if messages[i].get('app_scope_intent') in ('greeting', 'out_of_scope', 'unclear'):
+                continue
             question = next((m['content'] for m in reversed(messages[:i]) if m['role'] == 'user'), None)
             if question is not None:
                 return messages[last]['content'], {'query': messages[i].get('notebook_query') or question, 'answer': messages[i]['content']}
@@ -32,9 +35,12 @@ class NotebookChatAgent(ContractRAGAgent):
         events = asyncio.Queue()
         loop = asyncio.get_running_loop()
         active = True
+        last_stage = None
 
         def report(stage):
-            if active and not loop.is_closed() and stage in ('understanding', 'searching', 'composing', 'sources'):
+            nonlocal last_stage
+            if active and not loop.is_closed() and stage != last_stage and stage in ('understanding', 'searching', 'composing', 'sources'):
+                last_stage = stage
                 loop.call_soon_threadsafe(events.put_nowait, {'type': 'progress', 'stage': stage})
 
         self.progress = report
@@ -71,7 +77,7 @@ class NotebookChatAgent(ContractRAGAgent):
         last = max(i for i, m in enumerate(messages) if m['role'] == 'user')
         return await self._execute({'token': token, 'user_id': self.user_id,
                                    'session_id': f'{self.user_id}:{self.conversation_id}',
-                                   'question': question, 'previous': previous, 'history': messages[:last]})
+                                   'question': question, 'previous': previous, 'history': contract_history(messages[:last])})
 
     async def _execute(self, payload):
         cancel = threading.Event()
@@ -80,7 +86,7 @@ class NotebookChatAgent(ContractRAGAgent):
 
         def call_chat():
             # Import once per process (Python's module cache); no dynamic exec or subprocess.
-            from .deep_agent_v1 import contract_assistant as chat
+            from .app_scope import call_contract_assistant as chat
             return chat(payload['question'], token=payload['token'], history=payload['history'],
                         settings=self.settings, user_id=payload['user_id'], session_id=payload['session_id'],
                         glossary=self.glossary, tracing=self.tracing, cancel=cancel, progress=self.progress)

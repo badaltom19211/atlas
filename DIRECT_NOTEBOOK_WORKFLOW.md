@@ -1,3 +1,49 @@
+# 17 November app-side scope wrapper
+
+`server/app_scope.py` now checks each incoming message before the bridge calls the
+existing notebook `contract_assistant()` function. `server/deep_agent_v1.py` is
+unchanged; no notebook prompt, function or retrieval logic was edited.
+
+- `Hi`, `HII`, `Hello` and similar greeting-only messages get a fixed greeting
+  without a model or notebook call.
+- Every other message has one additional classification call using the configured
+  AI Gateway model and the signed-in user's token. This adds model cost/latency
+  before a normal contract request; it does not replace notebook understanding.
+- An unrelated request gets the fixed contract-only reply; an ambiguous or mixed
+  request gets a clarification prompt. Neither calls the notebook or data tools.
+- A valid contract question calls the existing `contract_assistant()` with the
+  original question, owned contract history, token, settings and session ID.
+  Notebook answer text and cited source references are returned unchanged.
+- A greeting does not block the session. `HII` followed by a contract question
+  calls the notebook. `Hii, what are MSCI contract fees?` is also classified as a
+  question, not intercepted by the greeting shortcut.
+- App-handled greetings/refusals remain in displayed and stored history. Their
+  complete exchanges are excluded from subsequent notebook context, preserving
+  the previous contract subject. Old unmarked turns retain existing behavior.
+- Model, authentication and malformed-classification failures return an error;
+  they do not silently start retrieval or pretend the user asked an unrelated question.
+
+The wrapper has its own optional MLflow `app_scope` trace. For fixed replies it
+is the only workflow trace. Allowed questions then start the notebook's existing
+trace. Response metadata includes `app_scope_intent`, `notebook_called` and
+`scope_trace_id`; these add no extra UI labels. Fixed replies have no sources and
+emit only queued/understanding progress. Repeated adjacent progress stages are
+deduplicated in the bridge.
+
+Deploy these four runtime files together, keeping your existing configuration:
+
+- `server/app_scope.py` (new wrapper)
+- `server/notebook_bridge.py` (invoke wrapper)
+- `server/app.py` (restore scope markers from owned chat history)
+- `server/databricks_errors.py` (classification error label)
+
+No notebook replacement, app.yaml changes or database migration is required.
+After redeployment, test `HII` then a valid contract question, a greeting plus a
+question in one message, an unrelated question, and a contract follow-up after a
+greeting. Automated tests use fixture providers; live classifier accuracy and
+permissions still need checking in AIA. Scope classification is model-based and
+does not replace authorization or resource permissions.
+
 # 13 November workflow update
 
 The app bridge now calls `contract_assistant()` in `server/deep_agent_v1.py`.
@@ -29,7 +75,9 @@ No notebook URL, Databricks Job, subprocess, or `%run` is involved.
 React message
   -> server/app.py (authenticate user; load owned conversation)
   -> server/notebook_bridge.py :: NotebookChatAgent.answer()
-  -> asyncio.to_thread -> server/deep_agent_v1.py :: contract_assistant() -> chat()
+  -> asyncio.to_thread -> server/app_scope.py :: call_contract_assistant()
+       -> greeting / unrelated / unclear: fixed reply
+       -> contract: server/deep_agent_v1.py :: contract_assistant() -> chat()
   -> _chat() (fresh/follow-up resolution using supplied history)
   -> ask() -> build_contract_agent()'s Deep Agent graph.invoke()
   -> search_contracts()
@@ -44,14 +92,15 @@ React message
 ```
 
 The Deep Agent chooses tool calls according to the notebook's prompt. That prompt
-requires one `search_contracts` call for contract questions. There is no second
-outer router. The notebook's prompts, metadata rules, follow-up interpretation,
+requires one `search_contracts` call for contract questions. The app wrapper only
+checks scope; it does not select Genie versus RAG. The notebook's prompts, metadata rules, follow-up interpretation,
 Genie SSE parsing, reranking and source grouping are kept in the exported file.
 
 ## File responsibilities
 
 | File | Responsibility |
 | --- | --- |
+| `server/app_scope.py` | App-only scope check, fixed replies and exclusion of non-contract exchanges from model context. |
 | `server/deep_agent_v1.py` | Exported notebook workflow functions and prompts; public `chat()` entry point. |
 | `server/agent_runtime.py` | Per-request clients, token, cancellation and optional tracing context. |
 | `server/notebook_bridge.py` | Async API adapter; direct function call in a thread so the web event loop stays responsive. |

@@ -30,6 +30,12 @@ from .test_app import setup, create
 
 
 @pytest.fixture
+def allow_contract_scope(monkeypatch):
+    # Bridge/cancellation tests exercise the notebook boundary, not live classification.
+    monkeypatch.setattr('server.app_scope._classify_with_model', lambda *args: 'contract')
+
+
+@pytest.fixture
 def notebook(monkeypatch):
     from . import deep_agent_v1 as w
     @contextmanager
@@ -117,7 +123,7 @@ def test_previous_turn_uses_persisted_resolved_subject_and_skips_current_questio
     assert previous_turn([{'role': 'user', 'content': 'Hi'}]) == ('Hi', None)
 
 
-def test_cancel_signals_direct_call_and_holds_slot_until_thread_finishes(monkeypatch):
+def test_cancel_signals_direct_call_and_holds_slot_until_thread_finishes(monkeypatch, allow_contract_scope):
     from . import deep_agent_v1 as w
     started, release = threading.Event(), threading.Event()
     seen = {}
