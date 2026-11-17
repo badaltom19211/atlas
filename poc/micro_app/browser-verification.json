@@ -1,0 +1,19 @@
+{
+  "date": "2026-11-17",
+  "deployment_id": "01f1e2648bf3131bb0799e25012380a8",
+  "release": "session-v4",
+  "sign_in_and_consent_completed_by_user": true,
+  "profile_name_and_initial_visible": true,
+  "auto_scroll_crash_fixed": true,
+  "observed_progress_labels": ["Getting started", "Putting the answer together"],
+  "thinking_indicator_and_stop_button_visible": true,
+  "cases": [
+    {"case": "bike_count", "app_seconds_displayed": 12.5, "expected_count_7_found": true, "sources_expanded": true, "sql_expanded": true},
+    {"case": "document", "app_seconds_displayed": 6.3, "sources_expanded": true, "project_record_link_visible": true},
+    {"case": "mixed", "app_seconds_displayed": 13.8, "expected_count_7_found": true, "source_count": 6, "sql_and_document_controls_visible": true}
+  ],
+  "extra_retrieved_references_section": false,
+  "transient_http_502_resolved_by_reload": true,
+  "final_screenshot_capture_timed_out": true,
+  "not_verified": ["animation frame rate", "Stop button interaction", "Lakebase integration", "MLflow ingestion", "second real user isolation", "production load"]
+}

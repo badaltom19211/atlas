@@ -1,6 +1,6 @@
 # Koantek Micro App POC
 
-## Result — 16 November 2026
+## Result — updated 17 November 2026
 
 **Python + FastAPI + React can run on the Micro App runtime in this Koantek workspace.**
 The deployed POC uses real Bike Store Genie, project-document retrieval and AI Gateway,
@@ -15,7 +15,7 @@ old Lakebase chat database.
 - [Open POC](https://aia-micro-poc-7474654589961519.aws.databricksapps.com)
 - [Koantek app overview](https://dbc-f2d0e557-3d47.cloud.databricks.com/apps-v2/app/aia-micro-poc/overview)
 - App: `aia-micro-poc`; App Space: `demo`; API-reported compute: `LIQUID`.
-- Git branch: `poc/micro-app`; latest `main` changes merged through `34fbe2a`.
+- Git branch: `poc/micro-app`; latest `main` changes merged through `fb006af`.
 - Use Koantek Databricks sign-in. Access is authenticated; an anonymous API request returned HTTP 401.
 
 ## What the live POC does
@@ -84,7 +84,7 @@ live mixed-question check: HTTP 200, category count 7, both source types, no fai
 and an explicit project-retrieval limit. App processing took 14.05 seconds. Sanitized
 evidence is in `final-verification.json`.
 
-### Current release: session-v3
+### Streaming release: session-v3
 
 Deployment `01f1e246d81c1fb19b2918ec9a6dba99` succeeded and switched traffic on
 17 November 2026 at 05:25 UTC (16 November in Pacific time). Source snapshot:
@@ -108,6 +108,43 @@ completion. Timings are single observations, not a performance benchmark.
 Sanitized evidence is in `stream-results.json`. It also verifies authenticated identity,
 anonymous API rejection (401), and successful React HTML/bundle delivery (200).
 
+### Current live release: session-v4 — browser verification
+
+Deployment `01f1e2648bf3131bb0799e25012380a8` switched traffic successfully at
+08:58:17 UTC on 17 November 2026. Its source is
+`/Workspace/Users/badal.tomar@koantek.com/aia-micro-poc/session-v4`.
+
+After the user completed sign-in and explicitly approved the App Space permissions,
+browser testing exposed a React crash on the first question. The auto-scroll effect
+implicitly returned the scrolling method's result; React treated it as an effect
+cleanup function and crashed on the next update. A block-bodied effect now performs
+the scroll without returning that value. TypeScript checking and the POC production
+build passed, and the crash did not recur in three live browser questions.
+
+| Browser check | Observed result |
+|---|---|
+| Identity | Badal Tomar and the initial B displayed |
+| Progress | Getting started changed to Putting the answer together; the orbit/dots indicator and Stop control rendered |
+| Bike count | 7; Sources expanded and View SQL exposed the actual distinct-count query; 12.5 s shown |
+| Document period | Answer returned; Sources expanded to the Edward Jones project-record link; 6.3 s shown |
+| Mixed question | Both domains answered; six cited references, with SQL and grouped document links; 13.8 s shown |
+| Source wording | Only Sources was shown; no Retrieved references section |
+
+The document link points to Koantek's project index, not a PDF: this dataset provides
+project records rather than AIA contract files. The first browser navigation after
+authorization returned HTTP 502; a normal reload loaded the running app. The cause of
+that transient 502 is not established. Visual testing proves the displayed states and
+source controls; it does not measure animation frame rate or prove a production SLA.
+
+The final screenshot-capture tool timed out after these checks. Earlier SQL/document
+and thinking screenshots were saved locally and are excluded from Git. Only sanitized
+browser outcomes are committed in `browser-verification.json`.
+
+The POC branch also includes the later `fb006af` notebook tracing metadata change from
+`main`. It does not change this live POC's execution: the Koantek adapter does not call
+the contract `embed_query()` / `generate_answer()` functions, and MLflow is disabled.
+That production notebook update is verified separately by 31 targeted backend tests.
+
 Additional checks:
 
 - Minimal Python/FastAPI deployment succeeded; runtime reported Python 3.11.17.
@@ -127,12 +164,9 @@ Additional checks:
   history, sources, feedback, bookmarks, notes, follow-up context and owner checks. It used
   synthetic identities and disposable SQLite. **That is not a live Lakebase or SSO test.**
 
-The earlier browser visual QA attempt was stopped by Computer Use because it could not
-confidently verify the Windows browser URL. In the current session, Chrome opened the
-deployed app successfully but reached the Databricks sign-in page; UI visual validation
-is awaiting user sign-in. API and asset checks above do not prove visual animation quality.
-Two real users, load tests, MLflow ingestion and full production-workflow parity remain
-unverified.
+Browser verification is now complete for the scenarios above. Two real users, load
+tests, MLflow ingestion, the Stop button interaction and full production-workflow parity
+remain unverified. Backend cancellation is covered by the existing automated tests.
 
 ## Lakebase limitation observed here
 
