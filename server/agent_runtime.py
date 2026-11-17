@@ -24,6 +24,7 @@ class EmptySpan:
     def set_outputs(self, *args, **kwargs): pass
     def set_attribute(self, *args, **kwargs): pass
     def set_attributes(self, *args, **kwargs): pass
+    def set_status(self, *args, **kwargs): pass
 
 
 class DisabledTracing:

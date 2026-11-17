@@ -240,7 +240,7 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
                     item['notebook_query'] = previous_query[:16000]
                 if isinstance(notebook_output.get('in_scope'), bool):
                     item['in_scope'] = notebook_output['in_scope']
-                if notebook_output.get('message_type') in ('contract', 'greeting', 'thanks', 'goodbye', 'help', 'off_topic'):
+                if notebook_output.get('message_type') in ('contract', 'greeting', 'thanks', 'goodbye', 'help', 'off_topic', 'unclassified'):
                     item['message_type'] = notebook_output['message_type']
                 # Compatibility with history written by the retired app-only wrapper.
                 if 'in_scope' not in item and notebook_output.get('app_scope_intent') in ('contract', 'greeting', 'out_of_scope', 'unclear'):
@@ -328,7 +328,9 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
                             yield json.dumps({"type": "delta", "text": item}) + "\n"
                 if not content:
                     raise ValueError("Empty response")
-                status = "complete"
+                # Keep a handled notebook error's own reply and metadata in the final event.
+                status = "error" if any(t['name'] == 'deep_contract_agent' and t['status'] == 'error'
+                                        for t in tool_runs.values()) else "complete"
             except asyncio.CancelledError:
                 raise
             except Exception as error:

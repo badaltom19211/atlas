@@ -30,10 +30,14 @@ def format_result(result, question, runtime):
         raise next(iter(runtime.failures.values()))
     refs = result.get('references', [])
     understanding = result.get('glossary') or {}
+    failed = understanding.get('classification_status') == 'failed'
+    status = 'error' if failed else 'ok'
+    error = f"classification failed: {understanding.get('classification_error')}" if failed else None
     answer = result['answer'].strip() or 'I could not find supporting information for this question in the contracts.'
     for stage in runtime.failures:
         answer += '\n\n' + ('Structured contract lookup' if stage == 'genie' else 'Contract document search') + ' is unavailable; those facts could not be checked.'
     output = {'sources': [], 'references': refs, 'source_display': 'grouped',
+              'status': status, 'error': error,
               'workflow': 'notebook_chat', 'standalone_question': result.get('standalone_question'), 'is_follow_up': bool(result.get('is_follow_up')),
               'in_scope': result.get('in_scope', True), 'message_type': result.get('message_type', 'contract'),
               'classification_status': understanding.get('classification_status'),
@@ -47,4 +51,4 @@ def format_result(result, question, runtime):
               'tracing': 'disabled' if isinstance(runtime.tracing, DisabledTracing) else 'configured'}
     if len(json.dumps({'custom_outputs': output}, ensure_ascii=False, allow_nan=False)) > 63000 or len(answer) > 100000:
         raise ValueError('Notebook result exceeds storage limits.')
-    return {'answer': answer, 'custom_outputs': output}
+    return {'status': status, 'error': error, 'answer': answer, 'custom_outputs': output}

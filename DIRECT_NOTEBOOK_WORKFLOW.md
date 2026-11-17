@@ -1,6 +1,6 @@
 # 17 November latest notebook integration
 
-The workflow from `updated_nb.py` is integrated in the existing
+The workflow from `deep_agent_v1 (6).ipynb` is integrated in the existing
 `server/deep_agent_v1.py`. The separate `server/app_scope.py` classifier is removed.
 The bridge calls the notebook's `contract_assistant()` directly. Future business
 rules belong in the developer's notebook; the app keeps authentication,
@@ -24,19 +24,35 @@ owned history, cancellation, tracing and UI result formatting.
   `query_understanding` spans. Fixed replies have no retrieval spans, sources or
   search progress. There is no separate `app_scope` trace.
 
-**Preserved notebook limitation:** after two classification failures the notebook
-treats the message as a fresh contract question and can run the Deep Agent and
-retrieval. It also defaults uncertain classifications to in-scope. This behavior
-is deliberately preserved; it differs from the removed app classifier.
+**Latest notebook correction:** after two classification failures or invalid outputs,
+`understand_query()` returns `in_scope=False`, `message_type=unclassified` and
+`classification_status=failed`. The notebook's fixed retry/rephrase reply is
+returned with `status=error`; no contract agent, metadata extraction, Genie or RAG
+is called. The root MLflow span and status tag are marked error. Authentication,
+cancellation and sanitized provider errors remain handled by the app runtime.
 
-Deploy these five runtime files together and remove the retired wrapper:
+The error reply, classification metadata and trace ID are persisted. The final
+stream event delivers that reply with the saved message's error status, rather
+than replacing it with a generic exception. Previous valid contract context is
+preserved; the next valid question can still run normally. This also works with
+MLflow tracing disabled.
+
+**Remaining notebook limitation:** the prompt still treats uncertain classification
+as in-scope ("If unsure, use true"). This is different from a failed classification;
+the latest correction only stops failed/invalid classification.
+
+Deploy these seven runtime files together:
 
 - `server/deep_agent_v1.py`
+- `server/agent_runtime.py`
 - `server/notebook_bridge.py`
+- `server/notebook_agent.py`
 - `server/notebook_output.py`
 - `server/app.py`
-- `server/databricks_errors.py`
-- Delete `server/app_scope.py` (no remaining runtime import).
+- `server/database.py`
+
+When upgrading from before the wrapper removal, also use the current
+`server/databricks_errors.py` and delete `server/app_scope.py` (no runtime import).
 
 No app.yaml change, new scope, dependency or database migration is required.
 Old wrapper metadata is read only for history compatibility. New answers store
@@ -45,18 +61,18 @@ Raw provider error bodies are not exposed; classification errors retain exceptio
 type and HTTP status. Existing typed SQL/PDF references and validation remain.
 
 After redeployment, test `HII`, a valid contract question, an unrelated question,
-`Thanks!`, and a follow-up to the contract question. Automated tests use fixture
-providers; live model classification and permissions must still be verified in AIA.
+`Thanks!`, and a follow-up to the contract question. Automated fixture tests cover
+failed/invalid classification, retry recovery, no downstream calls, tracing,
+persisted failure metadata and follow-ups after an error. Live model classification
+and permissions must still be verified in AIA.
 
 ## Follow-ups for the notebook developer
 
 These are recommendations, not additional business-rule changes in this release:
 
-1. **`understand_query()` / `QUERY_UNDERSTANDING_PROMPT`:** after failed or invalid
-   classification, return an explicit retry/error or clarification outcome instead
-   of defaulting to `in_scope=True`. Decide how to handle uncertain and mixed-topic
-   messages; remove the prompt's "If unsure, use true" if strict scope is required.
-   Assert zero agent/Genie/RAG calls for failed classification in tests.
+1. **`QUERY_UNDERSTANDING_PROMPT`:** decide how to handle uncertain and mixed-topic
+   messages; remove "If unsure, use true" if strict scope is required. The previous
+   failure fallback is now fixed in notebook v6 and covered by app regression tests.
 2. **`rule_based_message_type()`:** preserve Unicode text. Its current `[^a-z\s]`
    cleanup turns `HII, अनुबंध की समाप्ति कब है?` into `hii`, incorrectly discarding
    the contract question. Only match small talk when the entire original message

@@ -12,7 +12,7 @@ def previous_turn(messages):
         raise ValueError('Missing user question.')
     for i in range(last - 1, -1, -1):
         if messages[i]['role'] == 'assistant':
-            if messages[i].get('in_scope') is False or messages[i].get('message_type') in ('greeting', 'thanks', 'goodbye', 'help', 'off_topic'):
+            if messages[i].get('in_scope') is False or messages[i].get('message_type') in ('greeting', 'thanks', 'goodbye', 'help', 'off_topic', 'unclassified'):
                 continue
             question = next((m['content'] for m in reversed(messages[:i]) if m['role'] == 'user'), None)
             if question is not None:

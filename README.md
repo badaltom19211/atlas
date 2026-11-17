@@ -49,14 +49,17 @@ shows an animated indicator and changes text every 4.5 seconds within the curren
 stage. It advances stages only on backend events, never on a simulated timer.
 These are workflow statuses, not model reasoning or token streaming.
 
-The latest `updated_nb.py` scope handling is integrated in `server/deep_agent_v1.py`;
+The latest `deep_agent_v1 (6).ipynb` scope handling is integrated in `server/deep_agent_v1.py`;
 the separate `server/app_scope.py` wrapper is removed. The notebook recognizes
 simple greetings/thanks/help without model calls and combines other scope checks
 with query understanding. Non-contract replies skip the Deep Agent and retrieval;
 they remain in saved history without replacing contract context. Contract questions
-use the same notebook pipeline and signed-in user. The notebook's fallback after
-two failed classifications still allows retrieval; its Unicode small-talk cleanup
-also needs a developer correction. See [integration and developer follow-ups](DIRECT_NOTEBOOK_WORKFLOW.md#17-november-latest-notebook-integration).
+use the same notebook pipeline and signed-in user. Two failed/invalid classifications
+now return the notebook's retry reply with error status and no agent/Genie/RAG calls.
+The app persists the reply and failure metadata, marks the optional root MLflow
+trace as error, and preserves the previous valid contract context. Uncertain-scope
+prompt behavior and Unicode small-talk cleanup remain developer follow-ups.
+See [integration and developer follow-ups](DIRECT_NOTEBOOK_WORKFLOW.md#17-november-latest-notebook-integration).
 No app.yaml or schema change is required.
 
 Source references are still stored with the answer in Lakebase. The UI displays

@@ -1,4 +1,4 @@
-"""App-compatible export synchronized with updated_nb.py (17 November 2026).
+"""App-compatible export synchronized with deep_agent_v1 (6).ipynb (17 November 2026).
 
 The notebook's prompts, Genie/RAG tools and follow-up functions live here.
 App entry point: contract_assistant(message, token=..., history=..., settings=..., ...).
@@ -8,7 +8,7 @@ agent_runtime.py; no global credentials, clients, agents or chat memory.
 import json
 import requests
 from concurrent.futures import ThreadPoolExecutor
-from mlflow.entities import SpanType
+from mlflow.entities import SpanType, SpanStatusCode
 from .agent_runtime import current_runtime as _runtime, open_runtime, ScopedTracing, provider_failure
 from .notebook_output import normalize_sources, format_result
 from .citations import prepare_source_display, without_model_sources, normalize_citation_tags
@@ -345,7 +345,7 @@ def _glossary_prompt_entries(entries: list[dict]) -> list[dict]:
         out.append(item)
     return out
 
-MESSAGE_TYPES = ("contract", "greeting", "thanks", "goodbye", "help", "off_topic")
+MESSAGE_TYPES = ("contract", "greeting", "thanks", "goodbye", "help", "off_topic", "unclassified")
 
 QUERY_UNDERSTANDING_PROMPT = """You prepare a user's message for a contract question-answering agent.
 Do ALL steps below in one pass and return ONLY a JSON object.
@@ -438,9 +438,11 @@ def understand_query(query: str, prev_query: str | None = None, prev_answer: str
     classification_status:
       'rule'     -> obvious small talk ('hi', 'thanks', 'bye', 'what can you do?') recognised without an LLM call
       'ok'       -> LLM classification succeeded
-      'fallback' -> the LLM call failed or returned no valid in_scope after CLASSIFY_ATTEMPTS tries. The message is then
-                    treated as a fresh contract question (real questions are never blocked) and the error is recorded
-                    in classification_error, on the MLflow span and in the contract_assistant() response."""
+      'failed'   -> the LLM call failed or returned no valid in_scope after CLASSIFY_ATTEMPTS tries. The message is
+                    NOT sent to the pipeline: in_scope = False, message_type = 'unclassified', so the caller returns
+                    a clarification / error reply (CLASSIFICATION_FAILED_ANSWER) and never runs Genie / RAG / the agent.
+                    The error is recorded in classification_error, on the MLflow span and in the contract_assistant()
+                    response."""
     _runtime().check()
     glossary = getattr(_runtime().glossary, 'glossary', None) or []
     glossary = glossary if isinstance(glossary, list) else []
@@ -476,27 +478,32 @@ def understand_query(query: str, prev_query: str | None = None, prev_answer: str
                 status_code = getattr(e, 'status_code', None) or getattr(getattr(e, 'response', None), 'status_code', None)
                 error = type(e).__name__ + (f' (HTTP {status_code})' if status_code else '')
             raw = {}
-        # 3) Explicit fallback: treat as a fresh contract question (never block a real question), record the failure
+        # 3) Classification failed: do NOT guess. Return 'unclassified' so the caller asks the user to retry / rephrase
         if error:
-            span.set_attributes({"classification_status": "fallback", "classification_error": error})
+            out = _non_contract_understanding(query, "unclassified", "failed", error)
+            out["out_of_scope_reason"] = "classification failed"
+            span.set_attributes({"in_scope": False, "message_type": "unclassified",
+                                 "classification_status": "failed", "classification_error": error})
             print(f"Query classification failed after {CLASSIFY_ATTEMPTS} attempts ({error}); "
-                  f"treating the message as a contract question.")
+                  f"returning a clarification reply, no Genie / RAG / agent call.")
+            span.set_outputs(out)
+            return out
         follow = has_prev and raw.get("follow_up") is True
         standalone = (_clean_str(raw.get("standalone_question")) if follow else None) or query   # fresh: keep user's words
         terms = list(dict.fromkeys(terms_by_name[t.lower()] for t in (raw.get("glossary_terms") or [])
                                    if isinstance(t, str) and t.lower() in terms_by_name))  # only real glossary terms
         clarification = _clean_str(raw.get("glossary_clarification")) if terms else None
         enriched = f"{standalone}\n(Business glossary: {clarification})" if clarification else standalone
-        # Scope: only an explicit false marks a message as out of scope (fallback -> raw is empty -> in scope)
+        # Scope: in_scope is a valid true/false here (checked above)
         in_scope = raw.get("in_scope") is not False
         reason = None if in_scope else (_clean_str(raw.get("out_of_scope_reason")) or "not a contract question")
         # message_type must agree with in_scope: in scope -> 'contract'; out of scope -> a non-contract type
         mtype = raw.get("message_type") if raw.get("message_type") in MESSAGE_TYPES else None
         if in_scope:
             mtype = "contract"
-        elif mtype in (None, "contract"):
+        elif mtype in (None, "contract", "unclassified"):
             mtype = "off_topic"
-        status = "fallback" if error else "ok"
+        status = "ok"
         span.set_attributes({"in_scope": in_scope, "message_type": mtype, "classification_status": status})
         out = {"follow_up": follow, "standalone_question": standalone, "enriched_question": enriched,
                "glossary_clarification": clarification, "glossary_terms": terms,
@@ -707,6 +714,9 @@ EXAMPLE_QUESTIONS = ("For example: 'What is the contract term of the MSCI order 
 OUT_OF_SCOPE_ANSWER = ("I can only help with questions about our contracts, for example vendors, contract terms, "
                        "renewals, termination and notice periods, fees and spend. Please ask a contract-related question.")
 
+CLASSIFICATION_FAILED_ANSWER = ("Sorry, I couldn't process your message right now. Please try again in a moment, or rephrase "
+                                "it as a question about our contracts. " + EXAMPLE_QUESTIONS + ".")
+
 SMALL_TALK_ANSWERS = {
     "greeting": "Hello! I'm the contract assistant. Ask me anything about our contracts: vendors, terms, renewals, "
                 "termination and notice periods, fees and spend. " + EXAMPLE_QUESTIONS + ".",
@@ -716,6 +726,7 @@ SMALL_TALK_ANSWERS = {
             "vendors, contract terms and dates, renewals, termination and notice periods, fees, pricing and spend. "
             "You can also ask follow-up questions. " + EXAMPLE_QUESTIONS + ".",
     "off_topic": OUT_OF_SCOPE_ANSWER,
+    "unclassified": CLASSIFICATION_FAILED_ANSWER,
 }
 
 def out_of_scope_result(query: str, understanding: dict, show: bool = True) -> dict:
@@ -926,9 +937,11 @@ def contract_assistant(message, *, token, history, settings, user_id, session_id
                       user_id=user_id, session_id=session_id, glossary=glossary, tracing=tracing, cancel=cancel, progress=progress)
         result['custom_outputs'].update(trace_id=getattr(span, 'trace_id', None),
             latency_s=round(time.perf_counter()-start, 2), session_id=session_id)
+        if result['status'] == 'error':
+            span.set_status(SpanStatusCode.ERROR)
         span.set_outputs(result)
         tracing.update_current_trace(user=user_id, session_id=session_id, client_request_id=request_id,
-            tags={'app': 'contract_assistant', 'app_version': 'updated_nb_2026_11_17', 'status': 'ok',
+            tags={'app': 'contract_assistant', 'app_version': 'deep_agent_v1_6_2026_11_17', 'status': result['status'],
                   'is_follow_up': str(result['custom_outputs'].get('is_follow_up', False)).lower(),
                   'message_type': str(result['custom_outputs'].get('message_type')),
                   'classification_status': str(result['custom_outputs'].get('classification_status')),

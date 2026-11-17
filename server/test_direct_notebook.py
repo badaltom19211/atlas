@@ -125,7 +125,7 @@ def test_cancel_signals_direct_call_and_holds_slot_until_thread_finishes(monkeyp
         seen.update(kwargs)
         started.set()
         release.wait(5)
-        return {'answer': 'done', 'custom_outputs': {}}
+        return {'status': 'ok', 'answer': 'done', 'custom_outputs': {}}
     monkeypatch.setattr(w, 'chat', chat)
     async def run():
         slots = asyncio.Semaphore(1)
@@ -351,7 +351,7 @@ def test_contract_assistant_has_one_root_trace_and_persistable_trace_id(monkeypa
             assert kwargs['user']=='alice' and kwargs['session_id']=='alice:chat'
     def chat(message, **kwargs):
         assert kwargs['history']==[]
-        return {'answer':'Answer', 'custom_outputs':{}}
+        return {'status':'ok', 'answer':'Answer', 'custom_outputs':{}}
     monkeypatch.setattr(w,'chat',chat)
     result=w.contract_assistant('Question', token='token', history=[{'role':'user','content':'old'}],
         settings=Settings(),user_id='alice',session_id='alice:chat',tracing=Tracing(),new_conversation=True)

@@ -120,7 +120,8 @@ def comment_json(comment):
 def message_json(message):
     custom_outputs = {"sources": []}
     for tool in message.tools:
-        if tool.name in ("contract_rag_tool", "structured_contract_agent", "deep_contract_agent") and tool.status == "completed":
+        # Handled notebook errors carry safe classification metadata and a trace ID too.
+        if tool.name in ("contract_rag_tool", "structured_contract_agent", "deep_contract_agent") and tool.status in ("completed", "error"):
             try:
                 payload = json.loads(tool.output)
                 metadata = payload.get("custom_outputs") if isinstance(payload, dict) else None
