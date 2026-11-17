@@ -51,6 +51,32 @@ def create(client):
     return result.json()['id']
 
 
+def test_thumbs_down_requires_atomic_note_and_keeps_it_until_vote_removed(setup):
+    alice, bob, _, _, _ = setup
+    cid = create(alice)
+    response = alice.post(f'/api/conversations/{cid}/messages', json={'content': 'Contract fees?'})
+    mid = json.loads(response.text.splitlines()[-1])['assistant']['id']
+    path = f'/api/messages/{mid}'
+    for note in (None, '', '   ', 'x' * 4001):
+        assert alice.patch(path, json={'feedback': 'down', 'saved': False, 'note': note}).status_code == 422
+    loaded = alice.get('/api/bootstrap').json()['conversations'][0]['messages'][-1]
+    assert loaded['feedback'] is None and loaded['comments'] == []
+    body = {'feedback': 'down', 'saved': False, 'note': '  The renewal date is incorrect.  '}
+    assert bob.patch(path, json=body).status_code == 404
+    result = alice.patch(path, json=body)
+    assert result.status_code == 200
+    message = result.json()
+    assert message['feedback'] == 'down' and len(message['comments']) == 1
+    assert message['comments'][0]['text'] == 'The renewal date is incorrect.'
+    note_id = message['comments'][0]['id']
+    assert alice.patch(path, json={'feedback': 'down', 'saved': True}).status_code == 200
+    assert alice.delete(f'/api/comments/{note_id}').status_code == 409
+    assert alice.patch(path, json={'feedback': None, 'saved': True}).status_code == 200
+    # A fresh negative vote needs its own explanation even when older notes exist.
+    assert alice.patch(path, json={'feedback': 'down', 'saved': True}).status_code == 422
+    assert alice.delete(f'/api/comments/{note_id}').status_code == 204
+
+
 def test_owner_isolation_history_feedback_notes_and_delete(setup):
     alice, bob, factory, _, app = setup
     cid = create(alice)

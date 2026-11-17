@@ -51,6 +51,7 @@ class EditConversation(BaseModel):
 
 
 class EditMessage(BaseModel):
+    note: str | None = Field(default=None, max_length=4000)
     feedback: Literal["up", "down"] | None = None
     saved: bool
 
@@ -185,11 +186,21 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
     def edit_message(message_id: str, body: EditMessage, background_tasks: BackgroundTasks, session=Depends(current), db=Depends(database)):
         message = own_message(db, message_id, session.user_id)
         changed_feedback = message.feedback != body.feedback
+        note = (body.note or '').strip()
+        if body.feedback == 'down' and (changed_feedback or not message.comments) and not note:
+            raise HTTPException(422, "Please add a note explaining your thumbs-down feedback.")
+        if note:
+            if body.feedback != 'down':
+                raise HTTPException(422, "Feedback notes must accompany thumbs-down feedback.")
+            if len(message.comments) >= 100:
+                raise HTTPException(409, "This response has reached its limit of 100 notes.")
+            db.add(Comment(message_id=message_id, text=note))
         trace_id = message_json(message)['custom_outputs'].get('trace_id')
         message.feedback, message.saved = body.feedback, body.saved
         db.commit()
         if changed_feedback and body.feedback in ('up', 'down') and isinstance(trace_id, str):
             background_tasks.add_task(record_trace_feedback, trace_id, body.feedback == 'up', session.user_id)
+        db.refresh(message, ["comments"])
         return message_json(message)
 
     def record_trace_feedback(trace_id, helpful, user_id):
@@ -214,6 +225,9 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
         comment = db.scalar(select(Comment).join(Message).join(Conversation).where(Comment.id == comment_id, Conversation.user_id == session.user_id))
         if not comment:
             raise HTTPException(404, "Note not found.")
+        message = own_message(db, comment.message_id, session.user_id)
+        if message.feedback == 'down' and len(message.comments) <= 1:
+            raise HTTPException(409, "Remove thumbs-down feedback before deleting its last note.")
         db.delete(comment)
         db.commit()
         return Response(status_code=204)
