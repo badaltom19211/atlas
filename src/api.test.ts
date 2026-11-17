@@ -56,14 +56,14 @@ describe('FastAPI chat integration', () => {
     const fetcher = vi.fn().mockResolvedValue(ndjson([{ type: 'done', assistant }]));
     vi.stubGlobal('fetch', fetcher);
     const signal = new AbortController().signal;
-    await api.send('conversation', 'Question', vi.fn(), signal, false, vi.fn(), { user: 'u', assistant: 'a' });
+    await api.send('conversation', 'Question', vi.fn(), signal, vi.fn(), { user: 'u', assistant: 'a' });
     const [url, request] = fetcher.mock.calls[0];
     expect(url).toBe('/api/conversations/conversation/messages');
     expect(request.signal).toBe(signal);
     expect(request.credentials).toBe('same-origin');
     expect(request.headers.has('Authorization')).toBe(false);
     expect(request.headers.get('X-Atlas-Request')).toBe('1');
-    expect(JSON.parse(request.body)).toEqual({ content: 'Question', user_id: 'u', assistant_id: 'a', regenerate: false });
+    expect(JSON.parse(request.body)).toEqual({ content: 'Question', user_id: 'u', assistant_id: 'a' });
   });
   it('loads history from the backend and writes feedback and comments there', async () => {
     const fetcher = vi.fn().mockImplementation(async (url: string) => Response.json(url === '/api/bootstrap' ? { user: { id: 'user' }, conversations: [], historyStorage: 'lakebase' } : {}));

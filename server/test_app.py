@@ -149,14 +149,24 @@ def test_authentication_csrf_and_logout(setup):
     assert alice.get('/api/bootstrap').status_code == 200
 
 
-def test_regeneration_context_duplicate_ids_and_failures(setup, monkeypatch):
+def test_disabled_regeneration_followups_duplicate_ids_and_failures(setup, monkeypatch):
     alice, _, factory, model, _ = setup
     cid = create(alice)
     body = {'content': 'Original question', 'user_id': 'user-one', 'assistant_id': 'assistant-one'}
     assert alice.post(f'/api/conversations/{cid}/messages', json=body).status_code == 200
     assert alice.post(f'/api/conversations/{cid}/messages', json=body).status_code == 409
-    alice.post(f'/api/conversations/{cid}/messages', json={'regenerate': True, 'assistant_id': 'assistant-two'})
+    original = alice.get('/api/bootstrap').json()['conversations'][0]
+    for content in ('', 'Original question'):
+        rejected = alice.post(f'/api/conversations/{cid}/messages', json={'regenerate': True, 'content': content, 'assistant_id': 'assistant-two'})
+        assert rejected.status_code == 422 and 'Regenerate answer is disabled' in rejected.json()['detail']
+    assert alice.get('/api/bootstrap').json()['conversations'][0] == original
     assert model.contexts == [{'role': 'user', 'content': 'Original question'}]
+    with factory() as db:
+        assert db.get(Conversation, cid).generation_started is None
+    assert alice.post(f'/api/conversations/{cid}/messages', json={'content': 'Tell me more', 'regenerate': False}).status_code == 200
+    assert model.contexts == [
+        {'role': message['role'], 'content': message['content']} for message in original['messages']
+    ] + [{'role': 'user', 'content': 'Tell me more'}]
     async def failed(*args):
         yield {'type': 'tool', 'tool': {'id': 'pending', 'name': 'genie_structured_data_tool', 'status': 'running', 'input': '{}', 'output': ''}}
         raise RuntimeError('Sensitive provider detail')

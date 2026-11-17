@@ -118,11 +118,14 @@ export default function App() {
   const newChat = () => { nearBottom.current = true; setSearchTarget(null); setShowJump(false); setActiveId(null); setView('home'); setInput(''); setCommentTarget(null); setSidebar(false); setTimeout(() => inputRef.current?.focus(), 0); };
   const patchConversation = async (id: string, patch: Partial<Pick<Conversation, 'title' | 'pinned' | 'archived'>>) => { if (isLive) { const next = await api.update(id, patch); update(id, () => next); } else update(id, c => ({ ...c, ...patch })); };
   const setMessage = async (cid: string, message: Message, patch: Partial<Pick<Message, 'feedback' | 'saved'>>) => { const next = { ...message, ...patch }; if (isLive) await api.feedback(message.id, next.feedback, next.saved); update(cid, c => ({ ...c, messages: c.messages.map(m => m.id === message.id ? next : m) })); };
-  const send = async (regenerate = false) => {
-    if (lock.current || (!regenerate && !input.trim())) return;
+  // Regenerate answer is disabled; sending always creates a new user turn.
+  // const send = async (regenerate = false) => {
+  const send = async () => {
+    if (lock.current || !input.trim()) return;
     lock.current = true;
     nearBottom.current = true; setSearchTarget(null);
-    const content = regenerate ? active?.messages.filter(m => m.role === 'user').at(-1)?.content || '' : input.trim();
+    // const content = regenerate ? active?.messages.filter(m => m.role === 'user').at(-1)?.content || '' : input.trim();
+    const content = input.trim();
     let conversation = active;
     let assistant: Message | undefined;
     let localUser: Message | undefined;
@@ -131,11 +134,12 @@ export default function App() {
       if (!conversation) { conversation = isLive ? await api.create(input.trim().slice(0, 70)) : makeConversation(input.trim().slice(0, 70)); setConversations(cs => [conversation!, ...cs]); }
       const id = conversation.id;
       setActiveId(id); setView('chat'); setBusyId(id); setProgress('queued'); setInput('');
-      assistant = makeMessage('assistant', ''); localUser = regenerate ? undefined : makeMessage('user', content);
+      // localUser = regenerate ? undefined : makeMessage('user', content);
+      assistant = makeMessage('assistant', ''); localUser = makeMessage('user', content);
       const aid = assistant.id;
       update(id, c => ({ ...c, updatedAt: new Date().toISOString(), messages: [...c.messages, ...(localUser ? [localUser] : []), assistant!] }));
       if (isLive) {
-        const result = await api.send(id, content, text => update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? { ...m, content: m.content + text } : m) })), controller.signal, regenerate, tool => update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? { ...m, tools: [...(m.tools || []).filter(t => t.id !== tool.id), tool] } : m) })), { user: localUser?.id, assistant: aid }, setProgress);
+        const result = await api.send(id, content, text => update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? { ...m, content: m.content + text } : m) })), controller.signal, tool => update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? { ...m, tools: [...(m.tools || []).filter(t => t.id !== tool.id), tool] } : m) })), { user: localUser?.id, assistant: aid }, setProgress);
         update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? result.assistant : m.id === localUser?.id && result.user ? result.user : m) }));
       } else {
         const answer = demoAnswer();

@@ -70,7 +70,7 @@ class AddComment(BaseModel):
 class SendMessage(BaseModel):
     content: str = Field(default="", max_length=66000)
     style: Literal["balanced", "concise", "detailed"] = "balanced"
-    regenerate: bool = False
+    regenerate: bool = False  # Retained only to explicitly reject older regeneration requests.
     user_id: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9_-]{1,36}$')
     assistant_id: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9_-]{1,36}$')
 
@@ -244,7 +244,9 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
     @app.post("/api/conversations/{conversation_id}/messages")
     async def send_message(conversation_id: str, body: SendMessage, session=Depends(current), db=Depends(database)):
         conversation = own_conversation(db, conversation_id, session.user_id)
-        if not body.regenerate and not body.content.strip():
+        if body.regenerate:
+            raise HTTPException(422, "Regenerate answer is disabled. Please send a new message.")
+        if not body.content.strip():
             raise HTTPException(422, "Please enter a message.")
         if len(conversation.messages) >= 200:
             raise HTTPException(409, "Start a new conversation to continue. This one has reached 200 messages.")
@@ -269,13 +271,13 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
                 if 'in_scope' not in item and notebook_output.get('app_scope_intent') in ('contract', 'greeting', 'out_of_scope', 'unclear'):
                     item['in_scope'] = notebook_output['app_scope_intent'] == 'contract'
             messages.append(item)
-        if body.regenerate:
-            last_user = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]["role"] == "user"), None)
-            if last_user is None:
-                raise HTTPException(400, "There is no message to regenerate.")
-            messages = messages[:last_user + 1]
-        else:
-            messages.append({"role": "user", "content": body.content.strip()})
+        # Regeneration disabled; keep its former context-selection logic commented out.
+        # if body.regenerate:
+        #     last_user = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]["role"] == "user"), None)
+        #     if last_user is None:
+        #         raise HTTPException(400, "There is no message to regenerate.")
+        #     messages = messages[:last_user + 1]
+        messages.append({"role": "user", "content": body.content.strip()})
         # Keep complete recent turns inside a bounded request, preserving the latest user input.
         context, size = [], 0
         for item in reversed(messages):
@@ -297,13 +299,12 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
         if claim.rowcount != 1:
             db.rollback()
             raise HTTPException(409, "A response is already being generated in this conversation.")
-        user_message = None
-        if not body.regenerate:
-            user_message = Message(conversation_id=conversation_id, role="user", content=body.content.strip())
-            if body.user_id:
-                user_message.id = body.user_id
-            db.add(user_message)
-            db.flush()
+        # if not body.regenerate:  # Disabled: every request now stores a new user message.
+        user_message = Message(conversation_id=conversation_id, role="user", content=body.content.strip())
+        if body.user_id:
+            user_message.id = body.user_id
+        db.add(user_message)
+        db.flush()
         assistant = Message(conversation_id=conversation_id, role="assistant", content="", status="stopped")
         assistant.created_at = now() + timedelta(microseconds=1)
         if body.assistant_id:
@@ -311,7 +312,7 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
         db.add(assistant)
         db.commit()
         assistant_id = assistant.id
-        user_json = message_json(user_message) if user_message else None
+        user_json = message_json(user_message)
         # Drop the database connection while the model and remote tools run.
         db.close()
 

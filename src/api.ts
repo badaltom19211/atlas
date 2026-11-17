@@ -91,10 +91,11 @@ export const api = {
   removeComment: (id: string) => json<void>(`/comments/${encodeURIComponent(id)}`, 'DELETE'),
   sessions: () => json<AppSession[]>('/sessions'),
   logout: () => json<void>('/auth/logout', 'POST'),
-  async send(id: string, content: string, onChunk: (text: string) => void, signal: AbortSignal, regenerate = false, onTool?: (tool: ToolRun) => void, ids?: { user?: string; assistant: string }, onProgress?: (stage: ProgressStage) => void): Promise<Answer> {
+  async send(id: string, content: string, onChunk: (text: string) => void, signal: AbortSignal, onTool?: (tool: ToolRun) => void, ids?: { user?: string; assistant: string }, onProgress?: (stage: ProgressStage) => void): Promise<Answer> {
     const response = await request(`/conversations/${encodeURIComponent(id)}/messages`, {
       method: 'POST', signal, headers: { Accept: 'application/x-ndjson' },
-      body: JSON.stringify({ content, regenerate, user_id: ids?.user, assistant_id: ids?.assistant }),
+      // Regeneration disabled: do not send the former regenerate flag.
+      body: JSON.stringify({ content, user_id: ids?.user, assistant_id: ids?.assistant }),
     });
     return readChatResponse(response, onChunk, onTool, onProgress);
   },
