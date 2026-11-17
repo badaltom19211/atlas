@@ -13,6 +13,10 @@ or [SETUP_NEW_WORKSPACE.md](SETUP_NEW_WORKSPACE.md) for a fresh workspace.
 
 The red-and-white interface includes private history, feedback, notes, saved
 responses, user name/initial, and title/message search with highlighted results.
+Thumbs-down requires a nonblank note of up to 4,000 characters. The vote and note
+are saved together; the note appears in Response notes and can be edited with
+Save/Cancel. Edits update the existing owned note in `atlas_comments`. The last
+note cannot be deleted while thumbs-down is active. No database migration is needed.
 New answers show cited Genie SQL under View SQL and all cited PDF links grouped by document
 with known page ranges under Sources. Internal citation tags are validated before
 being removed from the displayed answer. Older chats keep their inline references.

@@ -220,6 +220,15 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
         db.commit()
         return comment_json(comment)
 
+    @app.patch("/api/comments/{comment_id}")
+    def edit_comment(comment_id: str, body: AddComment, session=Depends(current), db=Depends(database)):
+        comment = db.scalar(select(Comment).join(Message).join(Conversation).where(Comment.id == comment_id, Conversation.user_id == session.user_id))
+        if not comment:
+            raise HTTPException(404, "Note not found.")
+        comment.text = body.text
+        db.commit()
+        return comment_json(comment)
+
     @app.delete("/api/comments/{comment_id}", status_code=204)
     def delete_comment(comment_id: str, session=Depends(current), db=Depends(database)):
         comment = db.scalar(select(Comment).join(Message).join(Conversation).where(Comment.id == comment_id, Conversation.user_id == session.user_id))

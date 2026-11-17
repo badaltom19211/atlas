@@ -87,6 +87,7 @@ export const api = {
   remove: (id: string) => json<void>(`/conversations/${encodeURIComponent(id)}`, 'DELETE'),
   feedback: (id: string, feedback: Feedback, saved: boolean, note?: string) => json<Message>(`/messages/${encodeURIComponent(id)}`, 'PATCH', { feedback, saved, note }),
   comment: (id: string, text: string) => json<Note>(`/messages/${encodeURIComponent(id)}/comments`, 'POST', { text }),
+  editComment: (id: string, text: string) => json<Note>(`/comments/${encodeURIComponent(id)}`, 'PATCH', { text }),
   removeComment: (id: string) => json<void>(`/comments/${encodeURIComponent(id)}`, 'DELETE'),
   sessions: () => json<AppSession[]>('/sessions'),
   logout: () => json<void>('/auth/logout', 'POST'),
