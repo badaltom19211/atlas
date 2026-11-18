@@ -1,0 +1,38 @@
+{
+  "deployment_id": "01f1e31350d21bca947452b619bed8ea",
+  "release": "session-v5",
+  "verified_date": "2026-11-17",
+  "timezone": "America/Los_Angeles",
+  "method": "Chrome UI interactions after user sign-in",
+  "identity_displayed": true,
+  "chart_result": {
+    "response_app_seconds": 14.9,
+    "table_row_count": 7,
+    "table_pagination_label": "1–7 of 7 rows",
+    "bar_view_rendered": true,
+    "bar_labels_and_values_visible": true,
+    "pie_view_rendered": true,
+    "pie_category_count": 7,
+    "pie_total_and_percentages_visible": true,
+    "source_count": 1,
+    "sources_expandable": true,
+    "actual_genie_sql_expandable": true
+  },
+  "cancellation": {
+    "stop_clicked_during_new_request": true,
+    "response_stopped_message_visible": true,
+    "input_controls_restored": true,
+    "new_chat_cleared_conversation_and_notice": true,
+    "fresh_greeting_succeeded": true,
+    "fresh_greeting_app_seconds": 0.7,
+    "upstream_provider_cancellation_verified": false
+  },
+  "not_verified_by_this_browser_check": [
+    "Animation frame rate",
+    "Lakebase persistence",
+    "MLflow trace ingestion",
+    "Two real users",
+    "Load or production SLA"
+  ],
+  "privacy": "No credentials, raw business answers, individual data rows or SQL contents stored in this report."
+}

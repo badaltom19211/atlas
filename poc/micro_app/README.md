@@ -182,8 +182,23 @@ and does not establish whether every request will be retried automatically by a 
 For this update, 57 targeted backend tests and 17 frontend tests passed; the POC
 TypeScript check and Vite build passed. The API verifies real chart input, while the
 shared renderer tests cover table/bar/pie behavior. **Session-v5 browser interaction
-checks for chart switching and Stop remain pending Koantek sign-in.** The earlier
-session-v4 browser results above do not verify those new controls.
+checks passed after Koantek sign-in on 17 November (Pacific time).**
+
+| Browser check | Observed result |
+|---|---|
+| Identity | Signed-in user's name and initial displayed |
+| Table | Seven category/count rows; 1–7 of 7 shown; response processing 14.9 s |
+| Bar view | Switching from Table displayed labeled horizontal bars with counts |
+| Pie view | Switching to Pie displayed a donut, total, seven categories and percentages |
+| Sources | One source expanded; View SQL exposed the actual aggregation query |
+| Stop | Clicking Stop on a new request displayed Response stopped and restored input controls |
+| New chat | Cleared the conversation and the stopped-response message |
+| Recovery | A fresh greeting returned successfully afterward; 0.7 s app processing |
+
+Sanitized observations are saved in `session-v5-browser-verification.json`. The chart
+screenshot is retained locally rather than committed with business values or SQL.
+The Stop check verifies browser cancellation and recovery; it does not establish that
+an already-running Genie/model request stops executing or stops incurring usage.
 
 Additional checks:
 
@@ -205,8 +220,8 @@ Additional checks:
   history, sources, feedback, bookmarks, notes, follow-up context and owner checks. It used
   synthetic identities and disposable SQLite. **That is not a live Lakebase or SSO test.**
 
-Session-v4 browser verification is complete for its scenarios above. Two real users, load
-tests, MLflow ingestion, the Stop button interaction and full production-workflow parity
+Browser verification is complete for the scenarios above. Two real users, load
+tests, MLflow ingestion and full production-workflow parity
 remain unverified. Backend cancellation is covered by the existing automated tests.
 
 ## Lakebase limitation observed here
