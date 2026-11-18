@@ -476,6 +476,28 @@ mark { background: #ffe2a8; color: inherit; border-radius: 2px; }
   .thinking .thinking-label { background: none; color: #8d667b; }
   .thinking i { opacity: .65; transform: none; }
 }
+.aia-help { color: #675b70; font-size: 13px; line-height: 1.65; }
+.help-intro { display: flex; align-items: center; gap: 18px; padding: 18px; border: 1px solid #f3dfe7; border-radius: 14px; background: linear-gradient(120deg, #fff3f7, #fff); }
+.help-mark { flex: 0 0 56px; height: 56px; display: grid; place-items: center; border-radius: 16px; background: #d90048; color: white; font-size: 19px; font-weight: 750; letter-spacing: -.7px; }
+.aia-help h3 { margin: 0 0 8px; color: #352c3e; font-size: 15px; font-weight: 650; }
+.aia-help p { margin: 0; }
+.help-intro h3 { margin-bottom: 4px; font-size: 17px; }
+.help-section { margin-top: 24px; }
+.help-source-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.help-source-grid>div { border: 1px solid #ebe5ee; border-radius: 12px; padding: 16px; background: #fcfbfd; }
+.help-source-grid svg { color: #c60043; }
+.help-source-grid h4 { font-size: 12px; color: #493a53; margin: 8px 0 5px; font-weight: 650; }
+.help-source-grid p, .help-source-note { font-size: 12px; }
+.aia-help .help-source-note { margin-top: 10px; }
+.help-feature-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.help-feature-list li { display: flex; align-items: flex-start; gap: 10px; }
+.help-feature-list svg { color: #a76682; flex-shrink: 0; margin-top: 3px; }
+.help-feature-list strong { color: #493a53; font-weight: 600; }
+.help-limits ul { padding-left: 18px; margin: 0; display: grid; gap: 7px; }
+.help-limits li::marker { color: #b9a2b3; }
+.help-privacy { margin-top: 23px; padding: 14px 16px; border-radius: 11px; background: #f5f3f7; display: flex; gap: 10px; align-items: flex-start; font-size: 11px; color: #7f7189; }
+.help-privacy svg { flex-shrink: 0; margin-top: 1px; }
+@media (max-width: 540px) { .help-source-grid { grid-template-columns: 1fr; } .help-intro { align-items: flex-start; padding: 14px; gap: 12px; } .help-mark { flex-basis: 44px; height: 44px; border-radius: 12px; font-size: 16px; } }
 @media (forced-colors: active) {
   .thinking .thinking-label { background: none; color: CanvasText; }
   .thinking i { background: CanvasText; }
