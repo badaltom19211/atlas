@@ -1,7 +1,8 @@
 """Bounded source catalogs; citations are data, never executable HTML."""
 import re
 from collections import Counter
-from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
+import posixpath
+from urllib.parse import parse_qsl, quote, unquote_plus, urlencode, urlsplit, urlunsplit
 
 from .notebook_agent import page_number, pages
 
@@ -15,7 +16,59 @@ def normalize_citation_tags(answer):
     return (answer or '').translate(FULLWIDTH_BRACKETS)
 
 
+# Contract PDFs are served by this app (GET PDF_ROUTE?path=...), because Catalog
+# Explorer cannot open a single volume file ("directory not found") and the
+# Files API forces a download that needs a bearer token.
+PDF_ROUTE = '/api/documents/pdf'
+PDF_ROOT = '/Volumes/dev_diamonddaas/raw/aia/AIAIMSG/MO_Contract_Mgt/Input/'
+
+
+def safe_volume_pdf_path(value):
+    """Return a normalized PDF path under PDF_ROOT, or None."""
+    if not isinstance(value, str) or not value or len(value) > 1024 or '\x00' in value or '\\' in value:
+        return None
+    if '..' in value.split('/'):
+        return None
+    path = posixpath.normpath(value)
+    if not path.startswith(PDF_ROOT) or not path.lower().endswith('.pdf') or path == PDF_ROOT.rstrip('/'):
+        return None
+    return path
+
+
+def pdf_link(path):
+    path = safe_volume_pdf_path(path)
+    return PDF_ROUTE + '?path=' + quote(path, safe='/') if path else None
+
+
+def volume_pdf_link(link, filename=None):
+    """Catalog Explorer link (volumePath = folder or file, '+' or %20) or a /Volumes
+    path -> same-origin app PDF route. Returns None if no safe PDF path is found."""
+    if not isinstance(link, str) or not link:
+        return None
+    if link.startswith(PDF_ROUTE + '?'):
+        paths = [p for k, p in parse_qsl(urlsplit(link).query) if k == 'path']
+        return pdf_link(paths[0]) if len(paths) == 1 else None
+    if link.startswith('/Volumes/'):
+        path = unquote_plus(link.split('#', 1)[0])
+    else:
+        try:
+            paths = [p for k, p in parse_qsl(urlsplit(link).query, keep_blank_values=True) if k == 'volumePath']
+        except ValueError:
+            return None
+        if len(paths) != 1:
+            return None
+        path = paths[0]
+    if path.endswith('/') and isinstance(filename, str) and filename.strip():
+        name = filename.strip()
+        if '/' in name or '\\' in name or name in ('.', '..'):
+            return None
+        path += name
+    return pdf_link(path)
+
+
 def safe_source_url(value, host):
+    if isinstance(value, str) and value.startswith(PDF_ROUTE + '?'):
+        return volume_pdf_link(value)
     if not isinstance(value, str) or len(value) > 1024 or re.search(r'[\s<>"\\]', value):
         return None
     try:
@@ -28,7 +81,10 @@ def safe_source_url(value, host):
 
 
 def document_file_url(value, filename, host):
-    """Turn a known volume-folder citation into a file link, never guess a filename."""
+    """Turn a known volume citation into the app PDF route, never guess a filename."""
+    route = volume_pdf_link(value, filename if isinstance(filename, str) and filename.lower().endswith('.pdf') else None)
+    if route:
+        return route
     safe = safe_source_url(value, host)
     if not safe or not isinstance(filename, str) or not filename.lower().endswith('.pdf'):
         return safe
