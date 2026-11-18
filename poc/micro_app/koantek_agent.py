@@ -14,6 +14,7 @@ from server.citations import prepare_source_display, without_model_sources
 from server.deep_agent_v1 import _llm_json, query_genie, understand_query, reasoning_options
 from server.notebook_bridge import NotebookChatAgent
 from server.notebook_output import normalize_sources
+from server.genie_results import bounded_results
 
 
 def project_records(result):
@@ -120,6 +121,11 @@ def run_chat(payload, settings, *, glossary=None, tracing=None, cancel=None, pro
             answer += '\n\n' + ('Bike Store Genie' if name == 'genie' else 'Project document search') + ' is unavailable; its results could not be verified.'
         base.update(references=refs, citation_status='reported' if any(r['used_in_answer'] for r in refs) else 'missing',
                     failed_tools=[name for name, _ in failures])
+        if not any(name == 'genie' for name, _ in failures):
+            budget = min(20000, max(0, 61500 - len(json.dumps(base, ensure_ascii=False))))
+            tables = bounded_results(getattr(runtime, 'genie_results', []), refs, budget)
+            if tables:
+                base['genie_results'] = tables
         if len(json.dumps(base, ensure_ascii=False)) > 63000:
             raise ValueError('POC evidence exceeds storage limits.')
         return {'answer': answer, 'custom_outputs': base}

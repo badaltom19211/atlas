@@ -1,0 +1,38 @@
+{
+  "initial_compute_state": "STOPPED",
+  "explicit_start_used": false,
+  "checks": [
+    {
+      "http": 202,
+      "seconds": 3.77
+    },
+    {
+      "http": 202,
+      "seconds": 8.52
+    },
+    {
+      "http": 202,
+      "seconds": 13.23
+    },
+    {
+      "http": 502,
+      "seconds": 17.21
+    },
+    {
+      "http": 502,
+      "seconds": 21.16
+    },
+    {
+      "http": 502,
+      "seconds": 25.47
+    },
+    {
+      "http": 200,
+      "seconds": 30.33
+    }
+  ],
+  "ready": true,
+  "boot_id": "323384c3-285c-4f44-b3da-ad7283f9c2b2",
+  "uptime_seconds": 3.91,
+  "ready_after_seconds": 30.33
+}

@@ -29,6 +29,7 @@ def runtime(monkeypatch):
         state.model_request = kwargs
         return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=state.answer))])
     current = SimpleNamespace(host='https://workspace.example.test', token='fixture-token', settings=settings,
+                              genie_results=[{'id': 'G1', 'title': 'Category counts', 'columns': ['Category', 'Count'], 'rows': [['A', '7']], 'truncated': False}],
                               check=lambda: None, report=state.stages.append,
                               oai=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=generate))))
     @contextmanager
@@ -56,6 +57,7 @@ def test_mixed_sources_remain_distinct_and_pages_are_not_invented(runtime):
     assert [source['kind'] for source in refs] == ['genie', 'document']
     assert refs[0]['sql'] == 'SELECT 7' and refs[1]['page_start'] is None
     assert all(source['used_in_answer'] for source in refs)
+    assert result['custom_outputs']['genie_results'][0]['rows'] == [['A', '7']]
     assert '[G1]' not in result['answer']
     assert result['custom_outputs']['notebook_query'] == 'Resolved fixture question'
     assert 'not a complete inventory' in result['answer']
@@ -76,6 +78,7 @@ def test_failed_genie_is_explicit_and_has_no_fabricated_sql(runtime, monkeypatch
     assert 'Bike Store Genie is unavailable' in result['answer']
     assert [r['id'] for r in result['custom_outputs']['references']] == ['D1']
     assert result['custom_outputs']['failed_tools'] == ['genie']
+    assert 'genie_results' not in result['custom_outputs']
     evidence = json.loads(runtime.model_request['messages'][1]['content'])
     assert evidence['unavailable_sources'] == ['genie']
 

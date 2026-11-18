@@ -1,0 +1,276 @@
+{
+  "identity_verified": true,
+  "anonymous_http": 401,
+  "react_html_and_bundle_http": 200,
+  "history_mode": "session-only",
+  "cases": [
+    {
+      "case": "bike_count",
+      "http": 200,
+      "wall_seconds": 23.21,
+      "progress": [
+        {
+          "stage": "queued",
+          "seconds": 3.05
+        },
+        {
+          "stage": "understanding",
+          "seconds": 3.12
+        },
+        {
+          "stage": "searching",
+          "seconds": 5.88
+        },
+        {
+          "stage": "composing",
+          "seconds": 22.6
+        },
+        {
+          "stage": "sources",
+          "seconds": 23.21
+        }
+      ],
+      "progress_passed": true,
+      "app_seconds": 20.16,
+      "selected_tools": [
+        "genie"
+      ],
+      "failed_tools": [],
+      "source_kinds": [
+        "genie"
+      ],
+      "used_source_count": 1,
+      "sql_sources": 1,
+      "follow_up": false,
+      "boot_id": "c25452e8-e1dd-43e8-bd57-e781a4b44213",
+      "routing_passed": true,
+      "result_table_count": 1,
+      "result_row_counts": [
+        1
+      ],
+      "result_tables_cited": true,
+      "expected_count_7_found": true
+    },
+    {
+      "case": "document",
+      "http": 200,
+      "wall_seconds": 8.64,
+      "progress": [
+        {
+          "stage": "queued",
+          "seconds": 3.25
+        },
+        {
+          "stage": "understanding",
+          "seconds": 3.33
+        },
+        {
+          "stage": "searching",
+          "seconds": 5.56
+        },
+        {
+          "stage": "composing",
+          "seconds": 6.99
+        },
+        {
+          "stage": "sources",
+          "seconds": 8.63
+        }
+      ],
+      "progress_passed": true,
+      "app_seconds": 5.38,
+      "selected_tools": [
+        "projects"
+      ],
+      "failed_tools": [],
+      "source_kinds": [
+        "document"
+      ],
+      "used_source_count": 1,
+      "sql_sources": 0,
+      "follow_up": false,
+      "boot_id": "c25452e8-e1dd-43e8-bd57-e781a4b44213",
+      "routing_passed": true,
+      "result_table_count": 0,
+      "result_row_counts": [],
+      "result_tables_cited": true
+    },
+    {
+      "case": "followup",
+      "http": 200,
+      "wall_seconds": 7.34,
+      "progress": [
+        {
+          "stage": "queued",
+          "seconds": 1.87
+        },
+        {
+          "stage": "understanding",
+          "seconds": 1.9
+        },
+        {
+          "stage": "searching",
+          "seconds": 3.52
+        },
+        {
+          "stage": "composing",
+          "seconds": 3.89
+        },
+        {
+          "stage": "sources",
+          "seconds": 7.33
+        }
+      ],
+      "progress_passed": true,
+      "app_seconds": 5.46,
+      "selected_tools": [
+        "projects"
+      ],
+      "failed_tools": [],
+      "source_kinds": [
+        "document"
+      ],
+      "used_source_count": 1,
+      "sql_sources": 0,
+      "follow_up": true,
+      "boot_id": "c25452e8-e1dd-43e8-bd57-e781a4b44213",
+      "routing_passed": true,
+      "result_table_count": 0,
+      "result_row_counts": [],
+      "result_tables_cited": true,
+      "subject_retained": true
+    },
+    {
+      "case": "mixed",
+      "http": 200,
+      "wall_seconds": 14.41,
+      "progress": [
+        {
+          "stage": "queued",
+          "seconds": 2.76
+        },
+        {
+          "stage": "understanding",
+          "seconds": 2.81
+        },
+        {
+          "stage": "searching",
+          "seconds": 4.53
+        },
+        {
+          "stage": "composing",
+          "seconds": 12.51
+        },
+        {
+          "stage": "sources",
+          "seconds": 14.4
+        }
+      ],
+      "progress_passed": true,
+      "app_seconds": 11.65,
+      "selected_tools": [
+        "genie",
+        "projects"
+      ],
+      "failed_tools": [],
+      "source_kinds": [
+        "document",
+        "genie"
+      ],
+      "used_source_count": 6,
+      "sql_sources": 1,
+      "follow_up": false,
+      "boot_id": "c25452e8-e1dd-43e8-bd57-e781a4b44213",
+      "routing_passed": true,
+      "result_table_count": 1,
+      "result_row_counts": [
+        1
+      ],
+      "result_tables_cited": true,
+      "expected_count_7_found": true
+    },
+    {
+      "case": "chart",
+      "http": 200,
+      "wall_seconds": 13.73,
+      "progress": [
+        {
+          "stage": "queued",
+          "seconds": 2.01
+        },
+        {
+          "stage": "understanding",
+          "seconds": 2.07
+        },
+        {
+          "stage": "searching",
+          "seconds": 3.65
+        },
+        {
+          "stage": "composing",
+          "seconds": 11.67
+        },
+        {
+          "stage": "sources",
+          "seconds": 13.72
+        }
+      ],
+      "progress_passed": true,
+      "app_seconds": 11.72,
+      "selected_tools": [
+        "genie"
+      ],
+      "failed_tools": [],
+      "source_kinds": [
+        "genie"
+      ],
+      "used_source_count": 1,
+      "sql_sources": 1,
+      "follow_up": false,
+      "boot_id": "c25452e8-e1dd-43e8-bd57-e781a4b44213",
+      "routing_passed": true,
+      "result_table_count": 1,
+      "result_row_counts": [
+        7
+      ],
+      "result_tables_cited": true,
+      "chart_rows_passed": true
+    },
+    {
+      "case": "greeting",
+      "http": 200,
+      "wall_seconds": 2.46,
+      "progress": [
+        {
+          "stage": "queued",
+          "seconds": 2.04
+        },
+        {
+          "stage": "understanding",
+          "seconds": 2.09
+        }
+      ],
+      "progress_passed": true,
+      "app_seconds": 0.42,
+      "selected_tools": [],
+      "failed_tools": [],
+      "source_kinds": [],
+      "used_source_count": 0,
+      "sql_sources": 0,
+      "follow_up": false,
+      "boot_id": "c25452e8-e1dd-43e8-bd57-e781a4b44213",
+      "routing_passed": true,
+      "result_table_count": 0,
+      "result_row_counts": [],
+      "result_tables_cited": true
+    }
+  ],
+  "all_passed": true,
+  "not_tested": [
+    "Lakebase integration (resource attachment rejected)",
+    "MLflow trace ingestion",
+    "second real user identity isolation",
+    "browser visual QA",
+    "load testing"
+  ]
+}

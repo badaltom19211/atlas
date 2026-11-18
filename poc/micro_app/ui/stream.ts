@@ -1,9 +1,9 @@
 import { progressStages, type ProgressStage } from '../../../src/Thinking';
-import type { CitationSource } from '../../../src/types';
+import type { CitationSource, GenieResult } from '../../../src/types';
 
 export interface ChatResult {
   answer: string;
-  custom_outputs: { references: CitationSource[]; notebook_query: string };
+  custom_outputs: { references: CitationSource[]; notebook_query: string; genie_results?: GenieResult[] };
   elapsed_seconds: number;
 }
 

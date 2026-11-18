@@ -23,6 +23,7 @@ def main():
     parser.add_argument('--profile', default='genie-react-workspace')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--stream', action='store_true', help='Measure live workflow progress delivery.')
+    parser.add_argument('--visualizations', action='store_true', help='Also verify chart rows and greeting behavior.')
     args = parser.parse_args()
     workspace = WorkspaceClient(profile=args.profile)
     if workspace.config.host.rstrip('/') != HOST:
@@ -65,7 +66,8 @@ def main():
                 response.close()
             record['progress'] = progress
             record['wall_seconds'] = round(time.monotonic()-start, 2)
-            record['progress_passed'] = [p['stage'] for p in progress] == ['queued', 'understanding', 'searching', 'composing', 'sources'] and progress[0]['seconds'] < record['wall_seconds']
+            expected_stages = ['queued', 'understanding', 'searching', 'composing', 'sources'] if expected else ['queued', 'understanding']
+            record['progress_passed'] = [p['stage'] for p in progress] == expected_stages and progress[0]['seconds'] < record['wall_seconds']
             if body is None:
                 print(json.dumps(record), flush=True)
                 return record, None
@@ -80,13 +82,27 @@ def main():
                       sql_sources=sum(bool(s.get('sql')) for s in refs),
                       follow_up=meta.get('is_follow_up'), boot_id=body['boot_id'])
         record['routing_passed'] = sorted(record['selected_tools']) == sorted(expected)
+        tables = meta.get('genie_results', [])
+        record['result_table_count'] = len(tables)
+        record['result_row_counts'] = [len(table['rows']) for table in tables]
+        record['result_tables_cited'] = all(any(ref.get('id') == table['id'] and ref.get('used_in_answer') for ref in refs) for table in tables)
+        if name == 'chart':
+            def chart_ready(table):
+                rows, columns = table['rows'], table['columns']
+                if table['truncated'] or len(columns) < 2 or not 2 <= len(rows) <= 12:
+                    return False
+                for column in range(len(columns)):
+                    if all(re.fullmatch(r'\d+(?:\.\d+)?', row[column].replace(',', '')) for row in rows):
+                        if any(len({row[index] for row in rows}) == len(rows) for index in range(len(columns)) if index != column):
+                            return True
+                return False
+            record['chart_rows_passed'] = any(chart_ready(table) for table in tables)
         if name in ('bike_count', 'mixed'):
             record['expected_count_7_found'] = bool(re.search(r'\b(7|seven)\b', body['answer'], re.I))
         if name == 'followup':
             record['subject_retained'] = 'edward' in meta.get('standalone_question', '').lower()
         print(json.dumps(record), flush=True)
-        # Terminal review only; the report file excludes private answers and SQL.
-        print(name + ' answer preview: ' + body['answer'][:650], flush=True)
+        # Both console and report omit business answers, SQL and individual row values.
         return record, body
 
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -103,14 +119,22 @@ def main():
         checks['cases'].append(followup)
     mixed, _ = ask('mixed', 'How many bike categories are there, and what projects are documented in the project index?', ['genie', 'projects'])
     checks['cases'].append(mixed)
-    checks['all_passed'] = len(checks['cases']) == 4 and all(
+    if args.visualizations:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            chart = pool.submit(ask, 'chart', 'Show the number of products grouped by bike category, including all category names and product counts.', ['genie'])
+            greeting = pool.submit(ask, 'greeting', 'Hi', [])
+            checks['cases'].extend([chart.result()[0], greeting.result()[0]])
+    checks['all_passed'] = len(checks['cases']) == (6 if args.visualizations else 4) and all(
         r['http'] == 200 and r.get('routing_passed') and not r.get('failed_tools')
-        and r.get('used_source_count', 0) > 0 and r.get('expected_count_7_found', True)
+        and (r.get('used_source_count', 0) > 0 or r['case'] == 'greeting') and r.get('expected_count_7_found', True)
+        and r.get('result_tables_cited', False) and r.get('chart_rows_passed', True)
         and r.get('subject_retained', True) and r.get('progress_passed', True) for r in checks['cases'])
     checks['not_tested'] = ['Lakebase integration (resource attachment rejected)', 'MLflow trace ingestion',
                             'second real user identity isolation', 'browser visual QA', 'load testing']
     args.output.write_text(json.dumps(checks, indent=2), encoding='utf-8')
     print(json.dumps({'all_passed': checks['all_passed'], 'report': str(args.output)}), flush=True)
+    if not checks['all_passed']:
+        raise SystemExit(1)
 
 
 if __name__ == '__main__':

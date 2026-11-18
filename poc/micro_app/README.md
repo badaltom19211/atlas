@@ -15,7 +15,7 @@ old Lakebase chat database.
 - [Open POC](https://aia-micro-poc-7474654589961519.aws.databricksapps.com)
 - [Koantek app overview](https://dbc-f2d0e557-3d47.cloud.databricks.com/apps-v2/app/aia-micro-poc/overview)
 - App: `aia-micro-poc`; App Space: `demo`; API-reported compute: `LIQUID`.
-- Git branch: `poc/micro-app`; latest `main` changes merged through `fb006af`.
+- Git branch: `poc/micro-app`; production changes merged through `99145ac` (Genie tables and charts).
 - Use Koantek Databricks sign-in. Access is authenticated; an anonymous API request returned HTTP 401.
 
 ## What the live POC does
@@ -108,7 +108,7 @@ completion. Timings are single observations, not a performance benchmark.
 Sanitized evidence is in `stream-results.json`. It also verifies authenticated identity,
 anonymous API rejection (401), and successful React HTML/bundle delivery (200).
 
-### Current live release: session-v4 — browser verification
+### Previous live release: session-v4 — browser verification
 
 Deployment `01f1e2648bf3131bb0799e25012380a8` switched traffic successfully at
 08:58:17 UTC on 17 November 2026. Its source is
@@ -145,6 +145,46 @@ The POC branch also includes the later `fb006af` notebook tracing metadata chang
 the contract `embed_query()` / `generate_answer()` functions, and MLflow is disabled.
 That production notebook update is verified separately by 31 targeted backend tests.
 
+### Current live release: session-v5 — Genie result data and measured wake-up
+
+Deployment `01f1e31350d21bca947452b619bed8ea` switched traffic successfully at
+05:48:40 UTC on 18 November 2026 (17 November in Pacific time). Its source is
+`/Workspace/Users/badal.tomar@koantek.com/aia-micro-poc/session-v5`.
+
+The POC now passes captured Genie rows through the completed chat event to the shared
+React table/bar/pie renderer. Only tables tied to cited SQL sources are included.
+The notebook export is unchanged by this POC integration. Numeric values come from
+Genie results; the chart is not reconstructed from generated prose. Incomplete or
+unsuitable results remain tables instead of misleading charts.
+
+All six authenticated live API cases passed:
+
+| Scenario | Verified result | App processing | Client wall time |
+|---|---|---:|---:|
+| Bike category count | 7; one result row and cited SQL | 20.16 s | 23.21 s |
+| Project period | One cited document record | 5.38 s | 8.64 s |
+| Project follow-up | Subject retained; cited document record | 5.46 s | 7.34 s |
+| Mixed question | Both tools; SQL and five document references | 11.65 s | 14.41 s |
+| Products by category | Seven rows, numeric counts, distinct labels and cited SQL; suitable for charts | 11.72 s | 13.73 s |
+| Greeting | No retrieval tools or sources; queued/understanding only | 0.42 s | 2.46 s |
+
+Retrieval cases streamed all five progress stages in order. Identity verification,
+anonymous rejection (401), and HTML/JavaScript delivery (200) passed again. These are
+single observations, not performance guarantees. Sanitized evidence is in
+`session-v5-verification.json`; raw answers, SQL and individual row values are omitted.
+
+Before this deployment, `wake_probe.py` measured the existing app waking from
+`STOPPED / App scaled to zero` without an explicit start command. Authenticated
+`/api/me` returned 202, then transient 502 responses, then 200 after **30.33 seconds**.
+`wake-verification.json` records that single cold-start observation. It is not an SLA
+and does not establish whether every request will be retried automatically by a client.
+
+For this update, 57 targeted backend tests and 17 frontend tests passed; the POC
+TypeScript check and Vite build passed. The API verifies real chart input, while the
+shared renderer tests cover table/bar/pie behavior. **Session-v5 browser interaction
+checks for chart switching and Stop remain pending Koantek sign-in.** The earlier
+session-v4 browser results above do not verify those new controls.
+
 Additional checks:
 
 - Minimal Python/FastAPI deployment succeeded; runtime reported Python 3.11.17.
@@ -155,7 +195,8 @@ Additional checks:
 - The Micro App automatically entered `STOPPED / App scaled to zero` while idle. An
   authenticated request returned an HTTP 202 HTML startup page; a later request returned
   HTTP 200 without an explicit `apps start` command. Automatic wake-up is verified, but
-  exact cold-start latency was not measured because requests were not continuously polled.
+  exact cold-start latency was not measured at that time. A later continuously polled
+  check measured 30.33 seconds, as recorded for session-v5 above.
 - 174 existing backend tests and 8 POC adapter tests passed; the POC TypeScript/Vite build passed.
 - For session-v3, 39 targeted backend tests and all 31 frontend tests passed. These cover
   the new endpoint, streamed parsing, source metadata, latest notebook adapter and direct
@@ -164,7 +205,7 @@ Additional checks:
   history, sources, feedback, bookmarks, notes, follow-up context and owner checks. It used
   synthetic identities and disposable SQLite. **That is not a live Lakebase or SSO test.**
 
-Browser verification is now complete for the scenarios above. Two real users, load
+Session-v4 browser verification is complete for its scenarios above. Two real users, load
 tests, MLflow ingestion, the Stop button interaction and full production-workflow parity
 remain unverified. Backend cancellation is covered by the existing automated tests.
 
@@ -242,7 +283,8 @@ production parity are resolved. The runtime proof is positive; the storage migra
 | `poc/micro_app/ui/main.tsx`, `ui/poc.css` | POC chat screen, profile initial, thinking animation, session reset and copy |
 | `poc/micro_app/ui/stream.ts` | Incremental NDJSON parsing, stage validation, completed answer/source delivery and interrupted-stream errors |
 | `src/Thinking.tsx` | Shared animated progress labels, with a Koantek-specific search label |
-| `src/Answer.tsx` | Reused unchanged for Markdown, collapsible sources and SQL |
+| `src/Answer.tsx`, `src/GenieResult.tsx`, `src/genieData.ts`, `src/genie.css` | Shared Markdown, sources/SQL, result tables and eligible bar/pie charts |
+| `server/genie_results.py` | Captures bounded Genie query rows and keeps only result tables tied to cited SQL |
 | `server/notebook_bridge.py` | Extracted `call_chat()` hook so a POC subclass can reuse existing cancellation and worker limits |
 | `server/app.py` | Optional server-selected notebook factory for future full-UI POC; production default stays unchanged |
 | `session-app.yaml` | Manifest actually deployed for the approved session-only scope |
@@ -250,10 +292,12 @@ production parity are resolved. The runtime proof is positive; the storage migra
 | `stage.py` | Allowlisted deployment packaging; excludes credentials, notebooks, tests and private data |
 | `runtime_probe/` | First minimal Python/streaming diagnostic deployment |
 | `restart_probe.py`, `test_poc.py`, `test_web.py`, `ui/stream.test.ts`, `live_probe.py` | Offline restart, adapter/API/parser tests and live streaming checks |
+| `wake_probe.py` | Measures authenticated automatic wake-up without an explicit app-start command |
 | `app-resource.json`, `lakebase-database.json`, `space.json` | Resource requests and attempted configuration for the Lakebase investigation |
 
-This branch includes the latest production code from `main`, including updates to the
-existing `server/deep_agent_v1.py`. The POC deployment uses its own session manifest and
+This branch includes production code through `99145ac`, including updates to the
+existing `server/deep_agent_v1.py`. The later AIA help-panel commit `f6dc9a5` is on
+`main`; it is not part of this standalone POC screen. The POC uses its own session manifest and
 entry point; it does not deploy the production React screen or change the Azure AIA app.
 Do not copy `session-app.yaml` into the AIA production deployment.
 
@@ -278,7 +322,8 @@ workspace release folder. If the Micro App is scaled down, start it and wait for
 databricks workspace import-dir C:\path\to\a-new-poc-bundle /Workspace/Users/YOUR_USER/aia-micro-poc/RELEASE -p genie-react-workspace
 databricks apps start aia-micro-poc -p genie-react-workspace
 databricks apps deploy aia-micro-poc --source-code-path /Workspace/Users/YOUR_USER/aia-micro-poc/RELEASE -p genie-react-workspace
-python poc/micro_app/live_probe.py --stream --output C:\path\to\sanitized-results.json
+python poc/micro_app/live_probe.py --stream --visualizations --output C:\path\to\sanitized-results.json
+python poc/micro_app/wake_probe.py --output C:\path\to\wake-results.json
 ```
 
 This setup uses no copied PAT or service-principal secret. Sign in with Databricks CLI;

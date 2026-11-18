@@ -9,13 +9,15 @@ const response = (events: unknown[]) => {
 describe('Micro App progress stream', () => {
   it('decodes split Unicode and stages before the final sourced answer', async () => {
     const progress = vi.fn();
+    const tables = [{ id: 'G1', title: 'Categories', columns: ['Category', 'Count'], rows: [['Bike', '7']], truncated: false }];
     const result = await readPocResponse(response([
       { type: 'progress', stage: 'searching' }, { type: 'progress', stage: 'unknown' },
-      { type: 'done', answer: 'Answer ✨', custom_outputs: { references: [{ id: 'G1' }] } },
+      { type: 'done', answer: 'Answer ✨', custom_outputs: { references: [{ id: 'G1' }], genie_results: tables } },
     ]), progress);
     expect(progress.mock.calls).toEqual([['searching']]);
     expect(result.answer).toBe('Answer ✨');
     expect(result.custom_outputs.references[0].id).toBe('G1');
+    expect(result.custom_outputs.genie_results).toEqual(tables);
   });
   it('rejects startup pages, truncated responses and explicit failures', async () => {
     await expect(readPocResponse(new Response('<html>Starting</html>', { status: 202 }), vi.fn())).rejects.toThrow('starting');

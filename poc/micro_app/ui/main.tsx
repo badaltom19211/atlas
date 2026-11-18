@@ -4,10 +4,11 @@ import { ArrowUp, Plus, Copy, Check, Square } from 'lucide-react';
 import Answer from '../../../src/Answer';
 import Thinking, { type ProgressStage } from '../../../src/Thinking';
 import { readPocResponse } from './stream';
-import type { CitationSource } from '../../../src/types';
+import type { CitationSource, GenieResult } from '../../../src/types';
 import './poc.css';
+import '../../../src/genie.css';
 
-type Item = { role: 'user' | 'assistant'; content: string; notebook_query?: string; refs?: CitationSource[]; seconds?: number };
+type Item = { role: 'user' | 'assistant'; content: string; notebook_query?: string; refs?: CitationSource[]; results?: GenieResult[]; seconds?: number };
 
 function Chat() {
   const [name, setName] = useState('');
@@ -40,7 +41,7 @@ function Chat() {
         body: JSON.stringify({ question, history, session_id: session }) });
       const result = await readPocResponse(response, setProgress);
       setItems(previous => [...previous, { role: 'assistant', content: result.answer, refs: result.custom_outputs.references,
-        notebook_query: result.custom_outputs.notebook_query, seconds: result.elapsed_seconds }]);
+        results: result.custom_outputs.genie_results, notebook_query: result.custom_outputs.notebook_query, seconds: result.elapsed_seconds }]);
     } catch (e) { setError(controller.signal.aborted ? 'Response stopped.' : e instanceof Error ? e.message : 'The request could not be completed.'); }
     finally { setPending(false); request.current = null; }
   }
@@ -51,7 +52,7 @@ function Chat() {
     <section className="messages" aria-label="Conversation">
       {items.length === 0 && <div className="empty"><div className="mark">A</div><h1>What would you like to know?</h1><p>Ask about bike-store data or documented projects.</p></div>}
       {items.map((item, index) => <article key={index} className={`message ${item.role}`}><div className="message-label">{item.role === 'user' ? 'You' : 'AIA'}{item.seconds !== undefined && <span>{item.seconds.toFixed(1)}s</span>}</div>
-        <div className="body">{item.role === 'assistant' ? <Answer content={item.content} references={item.refs} sourceDisplay="grouped" /> : item.content}</div>
+        <div className="body markdown">{item.role === 'assistant' ? <Answer content={item.content} references={item.refs} results={item.results} sourceDisplay="grouped" /> : item.content}</div>
         {item.role === 'assistant' && <button className="copy" aria-label="Copy answer" onClick={async () => { try { await navigator.clipboard.writeText(item.content); setCopied(index); } catch { setError('Unable to copy. Select the answer text to copy it.'); } }}>{copied === index ? <Check size={16} /> : <Copy size={16} />}</button>}
       </article>)}
       {pending && <Thinking stage={progress} searchLabel="Searching bike data and projects" />}
