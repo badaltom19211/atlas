@@ -27,6 +27,23 @@ describe('answer citations', () => {
     expect(html).not.toContain('<script>');
     expect(html).not.toContain('View source D2');
   });
+  it('allows only the authenticated relative PDF route and renders it in Sources', () => {
+    const path = '/Volumes/dev_diamonddaas/raw/aia/AIAIMSG/MO_Contract_Mgt/Input/Contract + #1.pdf';
+    const link = '/api/documents/pdf?path=' + encodeURIComponent(path);
+    expect(sourceUrl(link)).toBe(link);
+    expect(sourceUrl(link + '#page=4')).toBe(link + '#page=4');
+    for (const value of ['/api/auth/logout', '/api/documents/pdf', '//evil.example/api/documents/pdf?path=x',
+      link + '&path=other.pdf', link + '&redirect=https://evil.example', link + '#bad',
+      '/api/documents/pdf?path=/etc/file.pdf', '/api/documents/pdf?path=/Volumes/test.html']) {
+      expect(sourceUrl(value)).toBeUndefined();
+    }
+    const html = renderToStaticMarkup(<Answer content="Supported answer." sourceDisplay="grouped" references={[
+      { id: 'D1', kind: 'document', label: 'Contract', document: 'Contract.pdf', url: link, used_in_answer: true },
+    ]} />);
+    expect(html).toContain(`href="${link}"`);
+    expect(html).toContain('target="_blank"');
+    expect(html).not.toContain('Link unavailable');
+  });
   it('keeps older messages with no references readable', () => {
     const html = renderToStaticMarkup(<Answer content="An earlier answer." />);
     expect(html).toContain('An earlier answer.');

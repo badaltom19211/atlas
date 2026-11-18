@@ -8,8 +8,18 @@ import GenieResult from './GenieResult';
 import type { GenieResult as Result } from './types';
 
 export function sourceUrl(value: string | null): string | undefined {
-  if (!value) return undefined;
+  if (!value || /[\u0000-\u001f\u007f\\]/.test(value)) return undefined;
   try {
+    // Only this authenticated route is allowed as a relative source link.
+    if (value.startsWith('/api/documents/pdf?')) {
+      const url = new URL(value, 'https://aia.invalid');
+      const paths = url.searchParams.getAll('path');
+      if (url.pathname !== '/api/documents/pdf' || paths.length !== 1 ||
+        [...url.searchParams.keys()].some(key => key !== 'path') ||
+        !paths[0].startsWith('/Volumes/') || !paths[0].toLowerCase().endsWith('.pdf') ||
+        (url.hash && !/^#page=[1-9]\d*$/.test(url.hash))) return undefined;
+      return url.pathname + url.search + url.hash;
+    }
     const url = new URL(value);
     return url.protocol === 'https:' && !url.username && !url.password ? url.href : undefined;
   } catch { return undefined; }

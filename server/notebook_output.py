@@ -1,7 +1,7 @@
 """Normalize notebook references into the existing React/Lakebase response contract."""
 import json
 from .notebook_agent import page_number
-from .citations import safe_source_url
+from .citations import safe_source_url, document_file_url
 from .agent_runtime import DisabledTracing
 from .genie_results import bounded_results
 
@@ -20,6 +20,7 @@ def normalize_sources(sources, host):
             item.update(sql=sql[:16000], sql_truncated=len(sql) > 16000,
                         has_rows=bool(source.get('has_rows', False)))
         else:
+            item['url'] = document_file_url(source.get('link'), source.get('document'), host)
             item.update(document=str(source.get('document') or item['label'])[:512],
                         page_start=page_number(source.get('page')), page_end=page_number(source.get('page')))
         references.append(item)

@@ -22,6 +22,33 @@ with known page ranges under Sources. Internal citation tags are validated befor
 being removed from the displayed answer. Older chats keep their inline references.
 Existing chats, database tables and authentication remain compatible.
 
+Contract PDF sources now open through the authenticated `/api/documents/pdf?path=...`
+route in a new tab. The backend streams the file from the Databricks Files API with
+the signed-in user's token, including byte-range requests used by PDF viewers.
+It only serves PDFs under
+`/Volumes/dev_diamonddaas/raw/aia/AIAIMSG/MO_Contract_Mgt/Input/`, as configured by
+`PDF_ROOT` in `server/citations.py`. No credentials or shared file cache reach the browser.
+Notebook source normalization converts supported Catalog Explorer references to
+this route without modifying the notebook export. Older answers already saved with
+Catalog Explorer URLs retain those links; ask again to save the new PDF links.
+
+To deploy PDF access:
+
+1. Deploy the frontend and backend together. No app.yaml or database migration is needed.
+2. In the AIA app's **User authorization**, add the `files` scope if it is missing,
+   then reopen the app and approve the updated access. See
+   [Databricks user authorization](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/databricks-apps/auth).
+3. The signed-in user needs `USE CATALOG` on `dev_diamonddaas`, `USE SCHEMA` on
+   `dev_diamonddaas.raw`, and `READ VOLUME` on `dev_diamonddaas.raw.aia`.
+   [Volume privileges](https://learn.microsoft.com/en-us/azure/databricks/volumes/privileges)
+   still apply; granting only the app service principal access does not grant the user access.
+4. Ask a new document question, expand **Sources**, and open a PDF. A 403 means the
+   user scope or volume permission needs checking; a 404 means the referenced file is missing.
+
+The endpoint uses the documented
+[Files download API](https://docs.databricks.com/api/files/v2/download-file), returns
+safe access/error messages, and closes the upstream stream when the browser disconnects.
+
 New notebook answers also display cited Genie SQL result tables with Table, Bar,
 and Pie views. Category/value selectors use the returned rows; no model invents
 chart data and no extra Genie query runs. Tables paginate 10 rows at a time.

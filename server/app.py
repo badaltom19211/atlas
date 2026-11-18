@@ -22,6 +22,7 @@ from .agent_runtime import configure_tracing, DisabledTracing
 from .databricks_errors import public_failure
 from .glossary_assets import load_glossary_runtime
 from .auth import install_auth
+from .documents import document_pdf
 
 logger = logging.getLogger("atlas")
 
@@ -140,6 +141,10 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
     @app.get("/api/health")
     def health():
         return {"status": "ok"}
+
+    @app.get('/api/documents/pdf')
+    async def open_document(request: Request, session=Depends(current)):
+        return await document_pdf(request, settings, session.token)
 
     @app.get("/api/bootstrap")
     def bootstrap(session=Depends(current), db=Depends(database)):
