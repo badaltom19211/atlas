@@ -51,6 +51,32 @@ def create(client):
     return result.json()['id']
 
 
+def test_thumbs_down_requires_atomic_note_and_keeps_it_until_vote_removed(setup):
+    alice, bob, _, _, _ = setup
+    cid = create(alice)
+    response = alice.post(f'/api/conversations/{cid}/messages', json={'content': 'Contract fees?'})
+    mid = json.loads(response.text.splitlines()[-1])['assistant']['id']
+    path = f'/api/messages/{mid}'
+    for note in (None, '', '   ', 'x' * 4001):
+        assert alice.patch(path, json={'feedback': 'down', 'saved': False, 'note': note}).status_code == 422
+    loaded = alice.get('/api/bootstrap').json()['conversations'][0]['messages'][-1]
+    assert loaded['feedback'] is None and loaded['comments'] == []
+    body = {'feedback': 'down', 'saved': False, 'note': '  The renewal date is incorrect.  '}
+    assert bob.patch(path, json=body).status_code == 404
+    result = alice.patch(path, json=body)
+    assert result.status_code == 200
+    message = result.json()
+    assert message['feedback'] == 'down' and len(message['comments']) == 1
+    assert message['comments'][0]['text'] == 'The renewal date is incorrect.'
+    note_id = message['comments'][0]['id']
+    assert alice.patch(path, json={'feedback': 'down', 'saved': True}).status_code == 200
+    assert alice.delete(f'/api/comments/{note_id}').status_code == 409
+    assert alice.patch(path, json={'feedback': None, 'saved': True}).status_code == 200
+    # A fresh negative vote needs its own explanation even when older notes exist.
+    assert alice.patch(path, json={'feedback': 'down', 'saved': True}).status_code == 422
+    assert alice.delete(f'/api/comments/{note_id}').status_code == 204
+
+
 def test_owner_isolation_history_feedback_notes_and_delete(setup):
     alice, bob, factory, _, app = setup
     cid = create(alice)
@@ -80,6 +106,37 @@ def test_owner_isolation_history_feedback_notes_and_delete(setup):
         assert db.scalars(select(Message)).all() == []
 
 
+def test_feedback_note_is_editable_persistent_and_limited_to_4000_characters(setup):
+    alice, bob, _, _, app = setup
+    cid = create(alice)
+    response = alice.post(f'/api/conversations/{cid}/messages', json={'content': 'Contract fees?'})
+    mid = json.loads(response.text.splitlines()[-1])['assistant']['id']
+    original_text = 'a' * 4000
+    voted = alice.patch(f'/api/messages/{mid}', json={'feedback': 'down', 'saved': False, 'note': original_text})
+    assert voted.status_code == 200
+    original = voted.json()['comments'][0]
+    path = f'/api/comments/{original["id"]}'
+    assert bob.patch(path, json={'text': 'Someone else changed this'}).status_code == 404
+    assert alice.patch('/api/comments/missing-note', json={'text': 'Changed'}).status_code == 404
+    assert alice.patch(path, json={'text': 'Changed'}, headers={'x-atlas-request': ''}).status_code == 403
+    with TestClient(app) as anonymous:
+        assert anonymous.patch(path, json={'text': 'Changed'}, headers={'x-atlas-request': '1'}).status_code == 401
+    for text in ('', ' \n\t ', 'x' * 4001):
+        assert alice.patch(path, json={'text': text}).status_code == 422
+    unchanged = alice.get('/api/bootstrap').json()['conversations'][0]['messages'][-1]
+    assert unchanged['feedback'] == 'down' and unchanged['comments'] == [original]
+    replacement = 'b' * 4000
+    edited = alice.patch(path, json={'text': replacement})
+    assert edited.status_code == 200
+    assert edited.json() == {**original, 'text': replacement}
+    final = alice.patch(path, json={'text': '  The renewal date should be 30 June.  '})
+    assert final.status_code == 200
+    restored = alice.get('/api/bootstrap').json()['conversations'][0]['messages'][-1]
+    assert restored['feedback'] == 'down' and len(restored['comments']) == 1
+    assert restored['comments'] == [{**original, 'text': 'The renewal date should be 30 June.'}]
+    assert alice.delete(path).status_code == 409  # Editing cannot evade the required-note rule.
+
+
 def test_authentication_csrf_and_logout(setup):
     alice, _, _, _, app = setup
     with TestClient(app) as anonymous:
@@ -92,14 +149,24 @@ def test_authentication_csrf_and_logout(setup):
     assert alice.get('/api/bootstrap').status_code == 200
 
 
-def test_regeneration_context_duplicate_ids_and_failures(setup, monkeypatch):
+def test_disabled_regeneration_followups_duplicate_ids_and_failures(setup, monkeypatch):
     alice, _, factory, model, _ = setup
     cid = create(alice)
     body = {'content': 'Original question', 'user_id': 'user-one', 'assistant_id': 'assistant-one'}
     assert alice.post(f'/api/conversations/{cid}/messages', json=body).status_code == 200
     assert alice.post(f'/api/conversations/{cid}/messages', json=body).status_code == 409
-    alice.post(f'/api/conversations/{cid}/messages', json={'regenerate': True, 'assistant_id': 'assistant-two'})
+    original = alice.get('/api/bootstrap').json()['conversations'][0]
+    for content in ('', 'Original question'):
+        rejected = alice.post(f'/api/conversations/{cid}/messages', json={'regenerate': True, 'content': content, 'assistant_id': 'assistant-two'})
+        assert rejected.status_code == 422 and 'Regenerate answer is disabled' in rejected.json()['detail']
+    assert alice.get('/api/bootstrap').json()['conversations'][0] == original
     assert model.contexts == [{'role': 'user', 'content': 'Original question'}]
+    with factory() as db:
+        assert db.get(Conversation, cid).generation_started is None
+    assert alice.post(f'/api/conversations/{cid}/messages', json={'content': 'Tell me more', 'regenerate': False}).status_code == 200
+    assert model.contexts == [
+        {'role': message['role'], 'content': message['content']} for message in original['messages']
+    ] + [{'role': 'user', 'content': 'Tell me more'}]
     async def failed(*args):
         yield {'type': 'tool', 'tool': {'id': 'pending', 'name': 'genie_structured_data_tool', 'status': 'running', 'input': '{}', 'output': ''}}
         raise RuntimeError('Sensitive provider detail')

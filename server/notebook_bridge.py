@@ -12,6 +12,8 @@ def previous_turn(messages):
         raise ValueError('Missing user question.')
     for i in range(last - 1, -1, -1):
         if messages[i]['role'] == 'assistant':
+            if messages[i].get('in_scope') is False or messages[i].get('message_type') in ('greeting', 'thanks', 'goodbye', 'help', 'off_topic', 'unclassified'):
+                continue
             question = next((m['content'] for m in reversed(messages[:i]) if m['role'] == 'user'), None)
             if question is not None:
                 return messages[last]['content'], {'query': messages[i].get('notebook_query') or question, 'answer': messages[i]['content']}
@@ -32,9 +34,12 @@ class NotebookChatAgent(ContractRAGAgent):
         events = asyncio.Queue()
         loop = asyncio.get_running_loop()
         active = True
+        last_stage = None
 
         def report(stage):
-            if active and not loop.is_closed() and stage in ('understanding', 'searching', 'composing', 'sources'):
+            nonlocal last_stage
+            if active and not loop.is_closed() and stage != last_stage and stage in ('understanding', 'searching', 'composing', 'sources'):
+                last_stage = stage
                 loop.call_soon_threadsafe(events.put_nowait, {'type': 'progress', 'stage': stage})
 
         self.progress = report

@@ -24,6 +24,7 @@ class EmptySpan:
     def set_outputs(self, *args, **kwargs): pass
     def set_attribute(self, *args, **kwargs): pass
     def set_attributes(self, *args, **kwargs): pass
+    def set_status(self, *args, **kwargs): pass
 
 
 class DisabledTracing:
@@ -72,6 +73,7 @@ class RequestRuntime:
     vs_index: object = None
     http: object = None
     progress: object = None
+    genie_results: list = field(default_factory=list)
 
     def __post_init__(self):
         self.host = self.settings.databricks_host.rstrip('/')
@@ -125,6 +127,9 @@ class ScopedTracing:
                 with self.start_span(name=name, span_type=span_type) as span:
                     span.set_inputs({'args': args, 'kwargs': kwargs})
                     result = fn(*args, **kwargs)
+                    if name == 'genie_query':
+                        from .genie_results import capture_genie_results
+                        current_runtime().genie_results = capture_genie_results(result)
                     span.set_outputs(result)
                     return result
             return traced

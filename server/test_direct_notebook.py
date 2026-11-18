@@ -37,7 +37,7 @@ def notebook(monkeypatch):
         with bind_runtime(RequestRuntime(settings, token, user_id)) as scoped:
             yield scoped
     monkeypatch.setattr(w, 'open_runtime', runtime)
-    monkeypatch.setattr(w, '_llm_json', lambda system, query: {'follow_up': True, 'standalone_question': 'Acme fees?'} if system.startswith(w.QUERY_UNDERSTANDING_PROMPT) else {'vendor_name': ['Acme'], 'requested_fields': ['fees']})
+    monkeypatch.setattr(w, '_llm_json', lambda system, query: {'in_scope': True, 'message_type': 'contract', 'follow_up': True, 'standalone_question': 'Acme fees?'} if system.startswith(w.QUERY_UNDERSTANDING_PROMPT) else {'vendor_name': ['Acme'], 'requested_fields': ['fees']})
     monkeypatch.setattr(w, 'query_genie', lambda query: ('12 contracts [G1]', [{'id': 'G1', 'label': 'Count', 'sql': 'SELECT count(*) FROM contracts', 'has_rows': True}]))
     monkeypatch.setattr(w, 'query_rag', lambda query: ('30 days [D1]', [{'id': 'D1', 'label': 'Acme p. 4', 'document': 'Acme.pdf', 'page': 4, 'link': current_runtime().host + '/file.pdf'}]))
     class Agent:
@@ -125,7 +125,7 @@ def test_cancel_signals_direct_call_and_holds_slot_until_thread_finishes(monkeyp
         seen.update(kwargs)
         started.set()
         release.wait(5)
-        return {'answer': 'done', 'custom_outputs': {}}
+        return {'status': 'ok', 'answer': 'done', 'custom_outputs': {}}
     monkeypatch.setattr(w, 'chat', chat)
     async def run():
         slots = asyncio.Semaphore(1)
@@ -328,7 +328,7 @@ def test_query_understanding_validates_glossary_and_preserves_fresh_question(mon
     calls=[]
     def model(system, user):
         calls.append(user)
-        return {'follow_up': True, 'standalone_question': 'Invented question',
+        return {'in_scope': True, 'message_type': 'contract', 'follow_up': True, 'standalone_question': 'Invented question',
                 'glossary_terms': ['fees', 'invented'], 'glossary_clarification': 'fees means charges'}
     monkeypatch.setattr(w, '_llm_json', model)
     with bind_runtime(RequestRuntime(Settings(), 'token', 'user', glossary=glossary)):
@@ -351,7 +351,7 @@ def test_contract_assistant_has_one_root_trace_and_persistable_trace_id(monkeypa
             assert kwargs['user']=='alice' and kwargs['session_id']=='alice:chat'
     def chat(message, **kwargs):
         assert kwargs['history']==[]
-        return {'answer':'Answer', 'custom_outputs':{}}
+        return {'status':'ok', 'answer':'Answer', 'custom_outputs':{}}
     monkeypatch.setattr(w,'chat',chat)
     result=w.contract_assistant('Question', token='token', history=[{'role':'user','content':'old'}],
         settings=Settings(),user_id='alice',session_id='alice:chat',tracing=Tracing(),new_conversation=True)

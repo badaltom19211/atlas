@@ -2,6 +2,17 @@ import type { CitationSource } from './types';
 
 export interface DocumentSource { key: string; name: string; url: string | null; pages: string; count: number; references: CitationSource[]; }
 
+function documentLocation(value: string | null): string | null {
+  if (!value) return value;
+  try {
+    const url = new URL(value);
+    // PDF page navigation identifies a location inside the same document.
+    // Keep the path and query: equal filenames in different folders are different files.
+    if (/^#page=\d+(?:&|$)/i.test(url.hash)) url.hash = '';
+    return url.href;
+  } catch { return value; }
+}
+
 function documentPages(sources: CitationSource[]): string {
   const ranges = sources.flatMap(source => {
     const start = source.page_start;
@@ -18,7 +29,7 @@ function documentPages(sources: CitationSource[]): string {
   return merged.length ? `p. ${merged.map(([start, end]) => start === end ? start : `${start}–${end}`).join(', ')}` : '';
 }
 
-export function groupSources(references: CitationSource[], maxDocuments = 3) {
+export function groupSources(references: CitationSource[]) {
   const sql = new Map<string, CitationSource>();
   const documents = new Map<string, DocumentSource>();
   const used = references.filter(source => source.used_in_answer).sort((a, b) => (a.citation_order ?? 0) - (b.citation_order ?? 0));
@@ -30,8 +41,8 @@ export function groupSources(references: CitationSource[], maxDocuments = 3) {
       if (!sql.has(key)) sql.set(key, source);
       continue;
     }
-    const name = source.document || source.label;
-    const key = JSON.stringify([name, source.url]);
+    const name = (source.document || source.label).trim();
+    const key = JSON.stringify([name, documentLocation(source.url)]);
     const entry = documents.get(key) || { key, name, url: source.url, pages: '', count: 0, references: [] };
     entry.count += source.citation_count ?? 1;
     entry.references.push(source);
@@ -39,5 +50,5 @@ export function groupSources(references: CitationSource[], maxDocuments = 3) {
   }
   const ranked = [...documents.values()].sort((a, b) => b.count - a.count);
   ranked.forEach(document => { document.pages = documentPages(document.references); });
-  return { sql: [...sql.values()], documents: ranked.slice(0, maxDocuments), documentCount: ranked.length };
+  return { sql: [...sql.values()], documents: ranked, documentCount: ranked.length };
 }

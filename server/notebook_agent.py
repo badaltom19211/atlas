@@ -210,6 +210,8 @@ class ContractRAGAgent:
             receipt.update(status="error", output=json.dumps({"ok": False, "custom_outputs": {"sources": []}}))
             yield {"type": "tool", "tool": dict(receipt)}
             raise
-        receipt.update(status="completed", output=json.dumps({"ok": True, "custom_outputs": custom_outputs}, ensure_ascii=False))
+        # A handled notebook failure still delivers its fixed reply and metadata.
+        failed = custom_outputs.get('status') == 'error'
+        receipt.update(status="error" if failed else "completed", output=json.dumps({"ok": not failed, "custom_outputs": custom_outputs}, ensure_ascii=False))
         yield {"type": "tool", "tool": dict(receipt)}
         yield answer

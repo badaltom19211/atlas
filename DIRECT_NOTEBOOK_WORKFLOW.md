@@ -1,3 +1,97 @@
+# 17 November latest notebook integration
+
+The workflow from `deep_agent_v1 (6).ipynb` is integrated in the existing
+`server/deep_agent_v1.py`. The separate `server/app_scope.py` classifier is removed.
+The bridge calls the notebook's `contract_assistant()` directly. Future business
+rules belong in the developer's notebook; the app keeps authentication,
+owned history, cancellation, tracing and UI result formatting.
+
+- `rule_based_message_type()` recognizes whole-message greetings, thanks,
+  goodbyes and help requests. These return the notebook's fixed replies with
+  zero model calls and no Deep Agent, metadata extraction, Genie or RAG.
+- Other messages use `understand_query()` for scope, follow-up resolution and
+  glossary enrichment together. Successful classification uses one model call;
+  the notebook retries classification once on errors or invalid output.
+- `in_scope=False` returns `out_of_scope_result()` before the contract pipeline.
+  A successfully classified unrelated question gets the notebook's exact
+  contract-only reply and no data lookup.
+- Contract questions enter `_chat()` with the precomputed understanding, then
+  `ask()` and the Deep Agent. There is no second app classifier.
+- `HII` then a valid contract question works in the same conversation. Non-contract
+  turns remain visible in Lakebase history but do not replace contract context.
+  Persisted `notebook_query` retains the resolved subject for subsequent follow-ups.
+- Optional traces contain the notebook's root `contract_assistant` and
+  `query_understanding` spans. Fixed replies have no retrieval spans, sources or
+  search progress. There is no separate `app_scope` trace.
+
+**Latest notebook correction:** after two classification failures or invalid outputs,
+`understand_query()` returns `in_scope=False`, `message_type=unclassified` and
+`classification_status=failed`. The notebook's fixed retry/rephrase reply is
+returned with `status=error`; no contract agent, metadata extraction, Genie or RAG
+is called. The root MLflow span and status tag are marked error. Authentication,
+cancellation and sanitized provider errors remain handled by the app runtime.
+
+The error reply, classification metadata and trace ID are persisted. The final
+stream event delivers that reply with the saved message's error status, rather
+than replacing it with a generic exception. Previous valid contract context is
+preserved; the next valid question can still run normally. This also works with
+MLflow tracing disabled.
+
+**Remaining notebook limitation:** the prompt still treats uncertain classification
+as in-scope ("If unsure, use true"). This is different from a failed classification;
+the latest correction only stops failed/invalid classification.
+
+Deploy these seven runtime files together:
+
+- `server/deep_agent_v1.py`
+- `server/agent_runtime.py`
+- `server/notebook_bridge.py`
+- `server/notebook_agent.py`
+- `server/notebook_output.py`
+- `server/app.py`
+- `server/database.py`
+
+When upgrading from before the wrapper removal, also use the current
+`server/databricks_errors.py` and delete `server/app_scope.py` (no runtime import).
+
+No app.yaml change, new scope, dependency or database migration is required.
+Old wrapper metadata is read only for history compatibility. New answers store
+`in_scope`, `message_type` and classification status in existing answer metadata.
+Raw provider error bodies are not exposed; classification errors retain exception
+type and HTTP status. Existing typed SQL/PDF references and validation remain.
+
+After redeployment, test `HII`, a valid contract question, an unrelated question,
+`Thanks!`, and a follow-up to the contract question. Automated fixture tests cover
+failed/invalid classification, retry recovery, no downstream calls, tracing,
+persisted failure metadata and follow-ups after an error. Live model classification
+and permissions must still be verified in AIA.
+
+## Follow-ups for the notebook developer
+
+These are recommendations, not additional business-rule changes in this release:
+
+1. **`QUERY_UNDERSTANDING_PROMPT`:** decide how to handle uncertain and mixed-topic
+   messages; remove "If unsure, use true" if strict scope is required. The previous
+   failure fallback is now fixed in notebook v6 and covered by app regression tests.
+2. **`rule_based_message_type()`:** preserve Unicode text. Its current `[^a-z\s]`
+   cleanup turns `HII, अनुबंध की समाप्ति कब है?` into `hii`, incorrectly discarding
+   the contract question. Only match small talk when the entire original message
+   is small talk; test Hindi/English mixed questions, punctuation and numbers.
+3. **`_load_history()` / `_is_contract_turn()`:** persist and restore the resolved
+   standalone question and intent fields. Do not depend on exact fixed-answer
+   text to identify non-contract turns. The app already retains `notebook_query`
+   and scope metadata; give the notebook the same history contract.
+4. **`contract_assistant()` / `chat()`:** provide an importable entry point with
+   explicit credentials/clients and owned history. Move installation, notebook
+   setup, global credentials, global session memory and demo calls out of import
+   execution. These remain app runtime adaptations until the export supports it.
+5. **`render_citations()` / error handling:** validate unknown citation IDs and
+   return structured SQL/PDF references; avoid returning raw provider errors.
+   The app already retains its reference validation and sanitized error handling.
+
+Replacing or editing the workspace notebook alone does not update a deployed app.
+Synchronize its reviewed workflow into the app-compatible export and redeploy.
+
 # 13 November workflow update
 
 The app bridge now calls `contract_assistant()` in `server/deep_agent_v1.py`.
@@ -30,7 +124,9 @@ React message
   -> server/app.py (authenticate user; load owned conversation)
   -> server/notebook_bridge.py :: NotebookChatAgent.answer()
   -> asyncio.to_thread -> server/deep_agent_v1.py :: contract_assistant() -> chat()
-  -> _chat() (fresh/follow-up resolution using supplied history)
+  -> understand_query() (rules or model; scope + follow-up + glossary)
+       -> non-contract: out_of_scope_result() -> fixed notebook reply
+       -> contract: _chat(understanding=...) using supplied history
   -> ask() -> build_contract_agent()'s Deep Agent graph.invoke()
   -> search_contracts()
   -> search_genie_and_rag()
@@ -44,15 +140,15 @@ React message
 ```
 
 The Deep Agent chooses tool calls according to the notebook's prompt. That prompt
-requires one `search_contracts` call for contract questions. There is no second
-outer router. The notebook's prompts, metadata rules, follow-up interpretation,
+requires one `search_contracts` call for contract questions. Notebook query
+understanding checks scope; there is no app-only router. The notebook's prompts, metadata rules, follow-up interpretation,
 Genie SSE parsing, reranking and source grouping are kept in the exported file.
 
 ## File responsibilities
 
 | File | Responsibility |
 | --- | --- |
-| `server/deep_agent_v1.py` | Exported notebook workflow functions and prompts; public `chat()` entry point. |
+| `server/deep_agent_v1.py` | Notebook workflow, scope rules, prompts and fixed replies; public `contract_assistant()` and `chat()` entry points. |
 | `server/agent_runtime.py` | Per-request clients, token, cancellation and optional tracing context. |
 | `server/notebook_bridge.py` | Async API adapter; direct function call in a thread so the web event loop stays responsive. |
 | `server/notebook_output.py` | Normalize SQL/PDF references and bound response metadata for React/Lakebase. |

@@ -224,6 +224,10 @@ mark { background: #ffe2a8; color: inherit; border-radius: 2px; }
 .grouped-sources .source-heading { font-weight: 500; }
 .grouped-sources .sql-source { background: #fafbfc; }
 .source-limit { color: #687386; }
+.note-counter { color: var(--text-muted); font-size: 11px; margin: 6px 0 12px; }
+.note-editor-actions { display: flex; gap: 8px; }
+.note-form label { align-self: flex-start; margin-bottom: 8px; }
+.note-card .icon-button + .icon-button { margin-left: 0; }
 /* Chat actions stay reachable by keyboard and touch. */
 .sidebar-chat { display: grid; grid-template-columns: minmax(0, 1fr) 32px; align-items: center; border-radius: 8px; margin-bottom: 3px; }
 .sidebar-chat.selected { background: var(--accent-soft); color: var(--accent-hover); }

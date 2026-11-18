@@ -4,6 +4,8 @@ import remarkGfm from 'remark-gfm';
 import { ChevronDown, ExternalLink, FileText, Database } from 'lucide-react';
 import type { CitationSource } from './types';
 import { groupSources } from './sources';
+import GenieResult from './GenieResult';
+import type { GenieResult as Result } from './types';
 
 export function sourceUrl(value: string | null): string | undefined {
   if (!value) return undefined;
@@ -38,16 +40,16 @@ export function GroupedSources({ references }: { references: CitationSource[] })
         {(source.pages || !sourceUrl(source.url)) && <small>{[source.pages, !sourceUrl(source.url) ? 'Link unavailable' : ''].filter(Boolean).join(' · ')}</small>}
       </li>)}
     </ul>
-    {documentCount > documents.length && <small className="source-limit">Showing the {documents.length} most cited documents of {documentCount}.</small>}
   </details>;
 }
 
-export default function Answer({ content, references = [], sourceDisplay }: { content: string; references?: CitationSource[]; sourceDisplay?: 'grouped' }) {
+export default function Answer({ content, references = [], sourceDisplay, results = [] }: { content: string; references?: CitationSource[]; sourceDisplay?: 'grouped'; results?: Result[] }) {
   const [expanded, setExpanded] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const used = references.filter(source => source.used_in_answer);
   return <>
     <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+      table: ({ children }) => <div className="answer-table-scroll"><table>{children}</table></div>,
       a: ({ href, children }) => {
         const source = used.find(s => href === `#citation-${s.id}`);
         if (source) return <button className="citation-link" title={source.label} aria-label={`View source ${source.id}: ${source.label}`}
@@ -56,6 +58,7 @@ export default function Answer({ content, references = [], sourceDisplay }: { co
         return safe ? <a href={safe} target="_blank" rel="noopener noreferrer">{children}</a> : <span>{children}</span>;
       },
     }}>{sourceDisplay === 'grouped' ? content : citationMarkdown(content, references)}</ReactMarkdown>
+    {results.map(result => <GenieResult key={result.id} result={result} />)}
     {sourceDisplay === 'grouped' ? <GroupedSources references={references} /> : used.length > 0 && <div className="answer-sources">
       <button className="sources-toggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
         <FileText size={15} /> {used.length} {used.length === 1 ? 'source' : 'sources'} <ChevronDown size={15} className={expanded ? 'rotated' : ''} />

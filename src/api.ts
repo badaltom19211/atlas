@@ -85,15 +85,17 @@ export const api = {
   create: (title: string) => json<Conversation>('/conversations', 'POST', { title }),
   update: (id: string, patch: Partial<Pick<Conversation, 'title' | 'pinned' | 'archived'>>) => json<Conversation>(`/conversations/${encodeURIComponent(id)}`, 'PATCH', patch),
   remove: (id: string) => json<void>(`/conversations/${encodeURIComponent(id)}`, 'DELETE'),
-  feedback: (id: string, feedback: Feedback, saved: boolean) => json<Message>(`/messages/${encodeURIComponent(id)}`, 'PATCH', { feedback, saved }),
+  feedback: (id: string, feedback: Feedback, saved: boolean, note?: string) => json<Message>(`/messages/${encodeURIComponent(id)}`, 'PATCH', { feedback, saved, note }),
   comment: (id: string, text: string) => json<Note>(`/messages/${encodeURIComponent(id)}/comments`, 'POST', { text }),
+  editComment: (id: string, text: string) => json<Note>(`/comments/${encodeURIComponent(id)}`, 'PATCH', { text }),
   removeComment: (id: string) => json<void>(`/comments/${encodeURIComponent(id)}`, 'DELETE'),
   sessions: () => json<AppSession[]>('/sessions'),
   logout: () => json<void>('/auth/logout', 'POST'),
-  async send(id: string, content: string, onChunk: (text: string) => void, signal: AbortSignal, regenerate = false, onTool?: (tool: ToolRun) => void, ids?: { user?: string; assistant: string }, onProgress?: (stage: ProgressStage) => void): Promise<Answer> {
+  async send(id: string, content: string, onChunk: (text: string) => void, signal: AbortSignal, onTool?: (tool: ToolRun) => void, ids?: { user?: string; assistant: string }, onProgress?: (stage: ProgressStage) => void): Promise<Answer> {
     const response = await request(`/conversations/${encodeURIComponent(id)}/messages`, {
       method: 'POST', signal, headers: { Accept: 'application/x-ndjson' },
-      body: JSON.stringify({ content, regenerate, user_id: ids?.user, assistant_id: ids?.assistant }),
+      // Regeneration disabled: do not send the former regenerate flag.
+      body: JSON.stringify({ content, user_id: ids?.user, assistant_id: ids?.assistant }),
     });
     return readChatResponse(response, onChunk, onTool, onProgress);
   },

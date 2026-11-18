@@ -1,4 +1,4 @@
-"""App-compatible export; RAG synchronized with deepagent_v1.py (17 November 2026).
+"""App-compatible export synchronized with deep_agent_v1 (6).ipynb (17 November 2026).
 
 The notebook's prompts, Genie/RAG tools and follow-up functions live here.
 App entry point: contract_assistant(message, token=..., history=..., settings=..., ...).
@@ -8,7 +8,7 @@ agent_runtime.py; no global credentials, clients, agents or chat memory.
 import json
 import requests
 from concurrent.futures import ThreadPoolExecutor
-from mlflow.entities import SpanType
+from mlflow.entities import SpanType, SpanStatusCode
 from .agent_runtime import current_runtime as _runtime, open_runtime, ScopedTracing, provider_failure
 from .notebook_output import normalize_sources, format_result
 from .citations import prepare_source_display, without_model_sources, normalize_citation_tags
@@ -345,6 +345,8 @@ def _glossary_prompt_entries(entries: list[dict]) -> list[dict]:
         out.append(item)
     return out
 
+MESSAGE_TYPES = ("contract", "greeting", "thanks", "goodbye", "help", "off_topic", "unclassified")
+
 QUERY_UNDERSTANDING_PROMPT = """You prepare a user's message for a contract question-answering agent.
 Do ALL steps below in one pass and return ONLY a JSON object.
 
@@ -371,7 +373,29 @@ termination or renewal"). It is added next to the question, so do NOT rewrite or
 
 Step 4 - glossary_terms: the exact 'term' values of the glossary entries you used in step 3 ([] if none).
 
-Return ONLY: {"follow_up": true or false, "standalone_question": "...", "glossary_clarification": "...", "glossary_terms": ["..."]}
+Step 5 - in_scope: decide whether the standalone_question (from step 2) is a BUSINESS question this agent can answer.
+- true: it is about the company's contracts, vendors/suppliers, contract documents or clauses, spend, fees, pricing,
+  contract values, dates, terms, renewals, termination, notice periods, licences, or any BUSINESS GLOSSARY term.
+  A follow-up whose standalone_question is about these topics is in scope, even if the new message alone is vague.
+- false: general knowledge, news, politics, people or public figures (e.g. 'who is the president of China'), weather,
+  sports, jokes, creative writing, coding help, small talk, or anything else not about the company's contracts.
+- If unsure, use true.
+
+Step 6 - out_of_scope_reason: if in_scope is false, a few words on what the message is about (e.g. 'general knowledge
+- politics', 'greeting'); otherwise "".
+
+Step 7 - message_type: exactly one of
+- "contract": in_scope is true. A message that contains a greeting or thanks AND a contract question
+  (e.g. 'Hi, what is the MSCI contract term?') is "contract".
+- "greeting": only a greeting or small talk, e.g. 'hi', 'hello', 'good morning', 'how are you?'.
+- "thanks": only thanks or an acknowledgement, e.g. 'thanks', 'great, thank you', 'ok got it'.
+- "goodbye": only a farewell, e.g. 'bye', 'that's all for today'.
+- "help": asks what this assistant is or can do, e.g. 'what can you do?', 'how do I use this?'.
+- "off_topic": anything else that is not in scope.
+For every type except "contract", in_scope is false.
+
+Return ONLY: {"follow_up": true or false, "standalone_question": "...", "glossary_clarification": "...", "glossary_terms": ["..."],
+"in_scope": true or false, "out_of_scope_reason": "...", "message_type": "..."}
 
 BUSINESS GLOSSARY (JSON):
 """
@@ -379,37 +403,112 @@ BUSINESS GLOSSARY (JSON):
 def _clean_str(v) -> str | None:
     return v.strip() if isinstance(v, str) and v.strip() else None
 
+CLASSIFY_ATTEMPTS = 2
+
+SMALL_TALK_PATTERNS = {
+    "greeting": r"(hi+|hello|hey+|hiya|greetings|good (morning|afternoon|evening|day))( there| all| team| everyone)?"
+                r"( how are you( doing)?| hows it going)?",
+    "thanks":   r"((ok(ay)?|great|cool|perfect|awesome|nice) )?(thanks?|thank you|thx|ty|many thanks|cheers)"
+                r"( (so much|a lot|very much))?( (thats|that was) (helpful|great|useful|perfect))?|ok(ay)?( got it)?|got it|noted",
+    "goodbye":  r"((ok(ay)?|thanks?) )?(bye( bye)?|goodbye|see you( later)?|cya|thats all( for (now|today))?)",
+    "help":     r"help|what can you do|what do you do|who are you|what are you|how do i use (this|you)",
+}
+
+_SMALL_TALK_RE = {k: re.compile(p) for k, p in SMALL_TALK_PATTERNS.items()}
+
+def rule_based_message_type(text: str) -> str | None:
+    """'hi', 'thanks!', 'bye', 'what can you do?' -> its message_type; anything else -> None (needs the LLM)."""
+    norm = re.sub(r"\s+", " ", re.sub(r"[^a-z\s]", "", (text or "").lower())).strip()
+    if not norm:
+        return None
+    return next((k for k, rx in _SMALL_TALK_RE.items() if rx.fullmatch(norm)), None)
+
+def _non_contract_understanding(query: str, mtype: str, status: str, error: str | None = None) -> dict:
+    """understand_query() result for a small-talk message recognised without the LLM."""
+    return {"follow_up": False, "standalone_question": query, "enriched_question": query, "glossary_clarification": None,
+            "glossary_terms": [], "in_scope": False, "out_of_scope_reason": mtype, "message_type": mtype,
+            "classification_status": status, "classification_error": error}
+
 def understand_query(query: str, prev_query: str | None = None, prev_answer: str | None = None) -> dict:
-    """ONE LLM call: follow-up? -> self-contained question -> glossary clarification.
+    """ONE LLM call: follow-up? -> self-contained question -> glossary clarification -> contract question or not
+    (in_scope) and what kind of message (message_type: contract, greeting, thanks, goodbye, help, off_topic).
     enriched_question = standalone question (verbatim) + glossary clarification.
-    Returns {'follow_up', 'standalone_question', 'enriched_question', 'glossary_clarification', 'glossary_terms'}.
-    Falls back to the original query (treated as fresh) if the call fails."""
+    Returns {'follow_up', 'standalone_question', 'enriched_question', 'glossary_clarification', 'glossary_terms',
+             'in_scope', 'out_of_scope_reason', 'message_type', 'classification_status', 'classification_error'}.
+    classification_status:
+      'rule'     -> obvious small talk ('hi', 'thanks', 'bye', 'what can you do?') recognised without an LLM call
+      'ok'       -> LLM classification succeeded
+      'failed'   -> the LLM call failed or returned no valid in_scope after CLASSIFY_ATTEMPTS tries. The message is
+                    NOT sent to the pipeline: in_scope = False, message_type = 'unclassified', so the caller returns
+                    a clarification / error reply (CLASSIFICATION_FAILED_ANSWER) and never runs Genie / RAG / the agent.
+                    The error is recorded in classification_error, on the MLflow span and in the contract_assistant()
+                    response."""
     _runtime().check()
     glossary = getattr(_runtime().glossary, 'glossary', None) or []
     glossary = glossary if isinstance(glossary, list) else []
     glossary = [e for e in glossary if isinstance(e, dict) and isinstance(e.get('term'), str) and e.get('consolidated_definition')]
     terms_by_name = {e['term'].lower(): e['term'] for e in glossary}
-    prompt = QUERY_UNDERSTANDING_PROMPT + json.dumps(_glossary_prompt_entries(glossary), ensure_ascii=False)
+    prompt = QUERY_UNDERSTANDING_PROMPT + json.dumps(_glossary_prompt_entries(glossary), ensure_ascii=False, separators=(',', ':'))
     has_prev = bool(prev_query)
     user = ((f"Previous question: {prev_query}\nPrevious answer: {_plain_text(prev_answer)[:3000]}\n\n") if has_prev
             else "Previous turn: none (first message).\n\n") + f"New message: {query}"
     with mlflow.start_span(name="query_understanding", span_type=SpanType.PARSER) as span:
         span.set_inputs({"query": query, "previous_query": prev_query})
-        try:
-            raw = _llm_json(prompt, user)
-        except Exception as e:                    # optional step: never block the pipeline
-            _runtime().check()
-            span.set_attribute("error", type(e).__name__)
+        # 1) Obvious small talk: no LLM call needed
+        rule_type = rule_based_message_type(query)
+        if rule_type:
+            out = _non_contract_understanding(query, rule_type, "rule")
+            span.set_attributes({"in_scope": False, "message_type": rule_type, "classification_status": "rule"})
+            span.set_outputs(out)
+            return out
+
+        # 2) LLM classification; a valid result must contain in_scope as true/false
+        raw, error = {}, None
+        for attempt in range(1, CLASSIFY_ATTEMPTS + 1):
+            try:
+                _runtime().check()
+                raw = _llm_json(prompt, user)
+                if isinstance(raw.get("in_scope"), bool):
+                    error = None
+                    break
+                error = "invalid classification output (in_scope missing or not true/false)"
+            except Exception as e:
+                _runtime().check()
+                # Preserve fallback routing, but never expose raw provider bodies/credentials.
+                status_code = getattr(e, 'status_code', None) or getattr(getattr(e, 'response', None), 'status_code', None)
+                error = type(e).__name__ + (f' (HTTP {status_code})' if status_code else '')
             raw = {}
-        raw = raw if isinstance(raw, dict) else {}
+        # 3) Classification failed: do NOT guess. Return 'unclassified' so the caller asks the user to retry / rephrase
+        if error:
+            out = _non_contract_understanding(query, "unclassified", "failed", error)
+            out["out_of_scope_reason"] = "classification failed"
+            span.set_attributes({"in_scope": False, "message_type": "unclassified",
+                                 "classification_status": "failed", "classification_error": error})
+            print(f"Query classification failed after {CLASSIFY_ATTEMPTS} attempts ({error}); "
+                  f"returning a clarification reply, no Genie / RAG / agent call.")
+            span.set_outputs(out)
+            return out
         follow = has_prev and raw.get("follow_up") is True
         standalone = (_clean_str(raw.get("standalone_question")) if follow else None) or query   # fresh: keep user's words
         terms = list(dict.fromkeys(terms_by_name[t.lower()] for t in (raw.get("glossary_terms") or [])
                                    if isinstance(t, str) and t.lower() in terms_by_name))  # only real glossary terms
         clarification = _clean_str(raw.get("glossary_clarification")) if terms else None
         enriched = f"{standalone}\n(Business glossary: {clarification})" if clarification else standalone
+        # Scope: in_scope is a valid true/false here (checked above)
+        in_scope = raw.get("in_scope") is not False
+        reason = None if in_scope else (_clean_str(raw.get("out_of_scope_reason")) or "not a contract question")
+        # message_type must agree with in_scope: in scope -> 'contract'; out of scope -> a non-contract type
+        mtype = raw.get("message_type") if raw.get("message_type") in MESSAGE_TYPES else None
+        if in_scope:
+            mtype = "contract"
+        elif mtype in (None, "contract", "unclassified"):
+            mtype = "off_topic"
+        status = "ok"
+        span.set_attributes({"in_scope": in_scope, "message_type": mtype, "classification_status": status})
         out = {"follow_up": follow, "standalone_question": standalone, "enriched_question": enriched,
-               "glossary_clarification": clarification, "glossary_terms": terms}
+               "glossary_clarification": clarification, "glossary_terms": terms,
+               "in_scope": in_scope, "out_of_scope_reason": reason, "message_type": mtype,
+               "classification_status": status, "classification_error": error}
         span.set_outputs(out)
     return out
 
@@ -609,6 +708,46 @@ def show_answer(result: dict):
         print("SOURCES:\n" + sources_to_text(result["sources"]))
     print("=" * 100 + "\n")
 
+EXAMPLE_QUESTIONS = ("For example: 'What is the contract term of the MSCI order form?', "
+                     "'What is our yearly spend with MSCI?' or 'Which contracts expire in 2026?'")
+
+OUT_OF_SCOPE_ANSWER = ("I can only help with questions about our contracts, for example vendors, contract terms, "
+                       "renewals, termination and notice periods, fees and spend. Please ask a contract-related question.")
+
+CLASSIFICATION_FAILED_ANSWER = ("Sorry, I couldn't process your message right now. Please try again in a moment, or rephrase "
+                                "it as a question about our contracts. " + EXAMPLE_QUESTIONS + ".")
+
+SMALL_TALK_ANSWERS = {
+    "greeting": "Hello! I'm the contract assistant. Ask me anything about our contracts: vendors, terms, renewals, "
+                "termination and notice periods, fees and spend. " + EXAMPLE_QUESTIONS + ".",
+    "thanks": "You're welcome! Is there anything else you'd like to know about our contracts?",
+    "goodbye": "Goodbye! Come back any time you have a question about our contracts.",
+    "help": "I answer questions about our contracts using the contract system and the signed contract documents: "
+            "vendors, contract terms and dates, renewals, termination and notice periods, fees, pricing and spend. "
+            "You can also ask follow-up questions. " + EXAMPLE_QUESTIONS + ".",
+    "off_topic": OUT_OF_SCOPE_ANSWER,
+    "unclassified": CLASSIFICATION_FAILED_ANSWER,
+}
+
+def out_of_scope_result(query: str, understanding: dict, show: bool = True) -> dict:
+    """Result for a message that understand_query() marked as not a contract question (same keys as ask()).
+    The reply depends on message_type: greeting / thanks / goodbye / help get a friendly reply, the rest the scope reply."""
+    mtype = understanding.get("message_type") or "off_topic"
+    out = {"references": [], "question": query, "answer": SMALL_TALK_ANSWERS.get(mtype, OUT_OF_SCOPE_ANSWER), "sources": "",
+           "metadata": None, "rag_query": None, "enriched_query": None, "glossary": understanding, "glossary_terms": [],
+           "in_scope": False, "out_of_scope_reason": understanding.get("out_of_scope_reason"), "message_type": mtype}
+    if show:
+        show_answer(out)
+    return out
+
+ERROR_ANSWER = "Sorry, something went wrong while answering your question. Please try again."
+
+NON_CONTRACT_ANSWERS = {a.strip() for a in SMALL_TALK_ANSWERS.values()} | {OUT_OF_SCOPE_ANSWER.strip(), ERROR_ANSWER.strip()}
+
+def _is_contract_turn(user_msg: str, answer: str) -> bool:
+    """False for a turn that was small talk / off-topic / an error, so it is never used as follow-up context."""
+    return str(answer).strip() not in NON_CONTRACT_ANSWERS and rule_based_message_type(str(user_msg)) is None
+
 def ask(query: str, session_id: str = "default", show: bool = True, agent=None, metadata: dict | None = None,
         enrich: bool = True) -> dict:
     """User message -> glossary enrichment -> Deep Agent -> Genie + metadata-aware RAG -> one merged, cited answer.
@@ -619,12 +758,17 @@ def ask(query: str, session_id: str = "default", show: bool = True, agent=None, 
         span.set_inputs({"query": query, "session_id": session_id})
         agent_input, glossary = (enrich_user_query(query) if enrich else (query, None))
         mlflow.update_current_trace(user=_runtime().user_id, session_id=session_id)
+        if glossary and not glossary['in_scope']:
+            out = out_of_scope_result(query, glossary, show=show)
+            span.set_attributes({'in_scope': False, 'message_type': out['message_type']})
+            span.set_outputs({'answer': out['answer'], 'in_scope': False, 'message_type': out['message_type']})
+            return out
 
         state = {"metadata": None, "sources": {"genie": [], "rag": []}, "rag_query": None, "preset_metadata": metadata}
         token = RUN_STATE.set(state)
         try:
             _runtime().check()
-            result = (agent or _runtime().agent).invoke({"messages": [{"role": "user", "content": agent_input}]}, config={"recursion_limit": 30})
+            result = (agent or _runtime().agent or build_contract_agent()).invoke({"messages": [{"role": "user", "content": agent_input}]}, config={"recursion_limit": 30})
             _runtime().check()
         finally:
             RUN_STATE.reset(token)
@@ -643,7 +787,8 @@ def ask(query: str, session_id: str = "default", show: bool = True, agent=None, 
     out = {"references": references, "question": query, "answer": answer, "sources": sources_md, "metadata": state["metadata"], "rag_query": state["rag_query"],
            "enriched_query": agent_input,
            "glossary": glossary,                     # full enrich_question() dict
-           "glossary_terms": (glossary or {}).get("glossary_terms", [])}
+           "glossary_terms": (glossary or {}).get("glossary_terms", []),
+           "in_scope": True, "out_of_scope_reason": None, "message_type": "contract"}
     if show:
         show_answer(out)
     return out
@@ -700,16 +845,28 @@ def build_followup_message(query: str, metadata: dict) -> str:
     return (f"{query}\n(Conversation context, only to identify what the question refers to: {context}. "
             f"Answer ONLY this question; do not repeat information from earlier questions.)")
 
-def _chat(query: str, session_id: str = "default", show: bool = False, previous=None) -> dict:
+def _chat(query: str, session_id: str = "default", show: bool = False, understanding: dict | None = None, previous=None) -> dict:
     """understand_query (1 LLM call: follow-up + standalone rewrite + glossary)
     -> fresh: ask(enriched question)
-    -> follow-up: metadata from (follow-up + previous turn) -> ask(enriched question + context, metadata)."""
+    -> follow-up: metadata from (follow-up + previous turn) -> ask(enriched question + context, metadata).
+    -> not a contract question (in_scope = False): fixed reply for its message_type (greeting, thanks, goodbye, help,
+       off_topic); nothing else is called and the previous turn is kept, so the next follow-up still refers to it.
+    understanding: a precomputed understand_query() result (contract_assistant() passes it, so the message is not
+                   classified twice).
+    App adaptation: previous is supplied from owned persisted history; there is no global session dictionary."""
     _runtime().check()
     prev = previous
     with mlflow.start_span(name="contract_chat", span_type=SpanType.CHAIN) as span:
         span.set_inputs({"query": query, "session_id": session_id})
         _runtime().report('understanding')
-        u = understand_query(query, prev["query"] if prev else None, prev["answer"] if prev else None)
+        u = understanding or understand_query(query, prev["query"] if prev else None, prev["answer"] if prev else None)
+        if not u["in_scope"]:                              # not a contract question: no Genie / RAG / agent
+            result = out_of_scope_result(query, u, show=show)
+            result.update(user_query=query, is_follow_up=u["follow_up"], standalone_question=u["standalone_question"])
+            span.set_attributes({"in_scope": False, "message_type": result["message_type"]})
+            span.set_outputs({"in_scope": False, "message_type": result["message_type"],
+                              "out_of_scope_reason": u["out_of_scope_reason"], "answer": result["answer"]})
+            return result                                  # previous contract context stays in owned history
         if not u["follow_up"]:
             result = ask(u["enriched_question"], session_id=session_id, show=show, enrich=False)
         else:
@@ -739,13 +896,25 @@ def chat(query: str, *, token: str, history: list[dict], settings,
     for i in range(len(history) - 1, -1, -1):
         if history[i].get('role') == 'assistant':
             question = next((m['content'] for m in reversed(history[:i]) if m.get('role') == 'user'), None)
-            if question is not None:
+            message = history[i]
+            # Persisted notebook metadata is authoritative; old chats fall back to the notebook's rules.
+            if message.get('in_scope') is False or message.get('message_type') in MESSAGE_TYPES[1:]:
+                continue
+            if question is not None and (message.get('in_scope') is True or _is_contract_turn(question, message['content'])):
                 previous = {'query': history[i].get('notebook_query') or question, 'answer': history[i]['content']}
                 break
     with open_runtime(settings, token, user_id, glossary=glossary, tracing=tracing, cancel=cancel, progress=progress) as runtime:
         try:
-            runtime.agent = build_contract_agent()
-            result = _chat(query, session_id=session_id, previous=previous)
+            # Notebook UI entry flow, inside the app's per-request runtime boundary.
+            runtime.report('understanding')
+            understanding = understand_query(query, previous['query'] if previous else None,
+                                              previous['answer'] if previous else None)
+            if not understanding['in_scope']:
+                result = out_of_scope_result(query, understanding, show=False)
+                result.update(user_query=query, is_follow_up=understanding['follow_up'],
+                              standalone_question=understanding['standalone_question'])
+            else:
+                result = _chat(query, session_id=session_id, previous=previous, understanding=understanding)
             runtime.check()
             return format_result(result, query, runtime)
         except Exception as error:
@@ -768,10 +937,14 @@ def contract_assistant(message, *, token, history, settings, user_id, session_id
                       user_id=user_id, session_id=session_id, glossary=glossary, tracing=tracing, cancel=cancel, progress=progress)
         result['custom_outputs'].update(trace_id=getattr(span, 'trace_id', None),
             latency_s=round(time.perf_counter()-start, 2), session_id=session_id)
+        if result['status'] == 'error':
+            span.set_status(SpanStatusCode.ERROR)
         span.set_outputs(result)
         tracing.update_current_trace(user=user_id, session_id=session_id, client_request_id=request_id,
-            tags={'app': 'contract_assistant', 'app_version': 'deep_agent_2026_11_16', 'status': 'ok',
+            tags={'app': 'contract_assistant', 'app_version': 'deep_agent_v1_6_2026_11_17', 'status': result['status'],
                   'is_follow_up': str(result['custom_outputs'].get('is_follow_up', False)).lower(),
+                  'message_type': str(result['custom_outputs'].get('message_type')),
+                  'classification_status': str(result['custom_outputs'].get('classification_status')),
                   'llm_model': settings.agent_model},
             request_preview=message[:1000], response_preview=result['answer'][:1000])
         return result

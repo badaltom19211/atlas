@@ -13,10 +13,28 @@ or [SETUP_NEW_WORKSPACE.md](SETUP_NEW_WORKSPACE.md) for a fresh workspace.
 
 The red-and-white interface includes private history, feedback, notes, saved
 responses, user name/initial, and title/message search with highlighted results.
-New answers show cited Genie SQL under View SQL and up to three grouped PDF links
+Thumbs-down requires a nonblank note of up to 4,000 characters. The vote and note
+are saved together; the note appears in Response notes and can be edited with
+Save/Cancel. Edits update the existing owned note in `atlas_comments`. The last
+note cannot be deleted while thumbs-down is active. No database migration is needed.
+New answers show cited Genie SQL under View SQL and all cited PDF links grouped by document
 with known page ranges under Sources. Internal citation tags are validated before
 being removed from the displayed answer. Older chats keep their inline references.
 Existing chats, database tables and authentication remain compatible.
+
+New notebook answers also display cited Genie SQL result tables with Table, Bar,
+and Pie views. Category/value selectors use the returned rows; no model invents
+chart data and no extra Genie query runs. Tables paginate 10 rows at a time.
+Charts require complete numeric results and unique categories (up to 40 for bars,
+2–12 for pies; pies reject negative/all-zero values). Nulls remain in the table.
+At most 200 rows per result and 20,000 characters of result metadata are saved;
+partial results are labelled and stay table-only. Data survives history reloads
+and saved responses through the existing owned Lakebase tool receipt.
+`server/agent_runtime.py` captures the exported `query_genie()` return at its
+existing boundary; `server/genie_results.py` parses SQL result Markdown, and
+`server/notebook_output.py` attaches cited tables. Notebook business code is unchanged.
+Older answers without saved result rows keep their existing text/Markdown tables.
+No app.yaml changes or database migration are required; redeploy updated code.
 
 ## Runtime
 
@@ -48,6 +66,19 @@ The backend now sends fixed progress events while the notebook runs:
 shows an animated indicator and changes text every 4.5 seconds within the current
 stage. It advances stages only on backend events, never on a simulated timer.
 These are workflow statuses, not model reasoning or token streaming.
+
+The latest `deep_agent_v1 (6).ipynb` scope handling is integrated in `server/deep_agent_v1.py`;
+the separate `server/app_scope.py` wrapper is removed. The notebook recognizes
+simple greetings/thanks/help without model calls and combines other scope checks
+with query understanding. Non-contract replies skip the Deep Agent and retrieval;
+they remain in saved history without replacing contract context. Contract questions
+use the same notebook pipeline and signed-in user. Two failed/invalid classifications
+now return the notebook's retry reply with error status and no agent/Genie/RAG calls.
+The app persists the reply and failure metadata, marks the optional root MLflow
+trace as error, and preserves the previous valid contract context. Uncertain-scope
+prompt behavior and Unicode small-talk cleanup remain developer follow-ups.
+See [integration and developer follow-ups](DIRECT_NOTEBOOK_WORKFLOW.md#17-november-latest-notebook-integration).
+No app.yaml or schema change is required.
 
 Source references are still stored with the answer in Lakebase. The UI displays
 only cited evidence under **Sources**; uncited references do not add another

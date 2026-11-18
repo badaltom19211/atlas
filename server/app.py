@@ -51,6 +51,7 @@ class EditConversation(BaseModel):
 
 
 class EditMessage(BaseModel):
+    note: str | None = Field(default=None, max_length=4000)
     feedback: Literal["up", "down"] | None = None
     saved: bool
 
@@ -69,7 +70,7 @@ class AddComment(BaseModel):
 class SendMessage(BaseModel):
     content: str = Field(default="", max_length=66000)
     style: Literal["balanced", "concise", "detailed"] = "balanced"
-    regenerate: bool = False
+    regenerate: bool = False  # Retained only to explicitly reject older regeneration requests.
     user_id: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9_-]{1,36}$')
     assistant_id: str | None = Field(default=None, pattern=r'^[a-zA-Z0-9_-]{1,36}$')
 
@@ -186,11 +187,21 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
     def edit_message(message_id: str, body: EditMessage, background_tasks: BackgroundTasks, session=Depends(current), db=Depends(database)):
         message = own_message(db, message_id, session.user_id)
         changed_feedback = message.feedback != body.feedback
+        note = (body.note or '').strip()
+        if body.feedback == 'down' and (changed_feedback or not message.comments) and not note:
+            raise HTTPException(422, "Please add a note explaining your thumbs-down feedback.")
+        if note:
+            if body.feedback != 'down':
+                raise HTTPException(422, "Feedback notes must accompany thumbs-down feedback.")
+            if len(message.comments) >= 100:
+                raise HTTPException(409, "This response has reached its limit of 100 notes.")
+            db.add(Comment(message_id=message_id, text=note))
         trace_id = message_json(message)['custom_outputs'].get('trace_id')
         message.feedback, message.saved = body.feedback, body.saved
         db.commit()
         if changed_feedback and body.feedback in ('up', 'down') and isinstance(trace_id, str):
             background_tasks.add_task(record_trace_feedback, trace_id, body.feedback == 'up', session.user_id)
+        db.refresh(message, ["comments"])
         return message_json(message)
 
     def record_trace_feedback(trace_id, helpful, user_id):
@@ -210,11 +221,23 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
         db.commit()
         return comment_json(comment)
 
+    @app.patch("/api/comments/{comment_id}")
+    def edit_comment(comment_id: str, body: AddComment, session=Depends(current), db=Depends(database)):
+        comment = db.scalar(select(Comment).join(Message).join(Conversation).where(Comment.id == comment_id, Conversation.user_id == session.user_id))
+        if not comment:
+            raise HTTPException(404, "Note not found.")
+        comment.text = body.text
+        db.commit()
+        return comment_json(comment)
+
     @app.delete("/api/comments/{comment_id}", status_code=204)
     def delete_comment(comment_id: str, session=Depends(current), db=Depends(database)):
         comment = db.scalar(select(Comment).join(Message).join(Conversation).where(Comment.id == comment_id, Conversation.user_id == session.user_id))
         if not comment:
             raise HTTPException(404, "Note not found.")
+        message = own_message(db, comment.message_id, session.user_id)
+        if message.feedback == 'down' and len(message.comments) <= 1:
+            raise HTTPException(409, "Remove thumbs-down feedback before deleting its last note.")
         db.delete(comment)
         db.commit()
         return Response(status_code=204)
@@ -222,7 +245,9 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
     @app.post("/api/conversations/{conversation_id}/messages")
     async def send_message(conversation_id: str, body: SendMessage, session=Depends(current), db=Depends(database)):
         conversation = own_conversation(db, conversation_id, session.user_id)
-        if not body.regenerate and not body.content.strip():
+        if body.regenerate:
+            raise HTTPException(422, "Regenerate answer is disabled. Please send a new message.")
+        if not body.content.strip():
             raise HTTPException(422, "Please enter a message.")
         if len(conversation.messages) >= 200:
             raise HTTPException(409, "Start a new conversation to continue. This one has reached 200 messages.")
@@ -235,17 +260,25 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
                 continue
             item = {'role': message.role, 'content': message.content}
             if settings.agent_workflow == 'notebook' and message.role == 'assistant':
-                previous_query = message_json(message)['custom_outputs'].get('notebook_query')
+                notebook_output = message_json(message)['custom_outputs']
+                previous_query = notebook_output.get('notebook_query')
                 if isinstance(previous_query, str):
                     item['notebook_query'] = previous_query[:16000]
+                if isinstance(notebook_output.get('in_scope'), bool):
+                    item['in_scope'] = notebook_output['in_scope']
+                if notebook_output.get('message_type') in ('contract', 'greeting', 'thanks', 'goodbye', 'help', 'off_topic', 'unclassified'):
+                    item['message_type'] = notebook_output['message_type']
+                # Compatibility with history written by the retired app-only wrapper.
+                if 'in_scope' not in item and notebook_output.get('app_scope_intent') in ('contract', 'greeting', 'out_of_scope', 'unclear'):
+                    item['in_scope'] = notebook_output['app_scope_intent'] == 'contract'
             messages.append(item)
-        if body.regenerate:
-            last_user = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]["role"] == "user"), None)
-            if last_user is None:
-                raise HTTPException(400, "There is no message to regenerate.")
-            messages = messages[:last_user + 1]
-        else:
-            messages.append({"role": "user", "content": body.content.strip()})
+        # Regeneration disabled; keep its former context-selection logic commented out.
+        # if body.regenerate:
+        #     last_user = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]["role"] == "user"), None)
+        #     if last_user is None:
+        #         raise HTTPException(400, "There is no message to regenerate.")
+        #     messages = messages[:last_user + 1]
+        messages.append({"role": "user", "content": body.content.strip()})
         # Keep complete recent turns inside a bounded request, preserving the latest user input.
         context, size = [], 0
         for item in reversed(messages):
@@ -267,13 +300,12 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
         if claim.rowcount != 1:
             db.rollback()
             raise HTTPException(409, "A response is already being generated in this conversation.")
-        user_message = None
-        if not body.regenerate:
-            user_message = Message(conversation_id=conversation_id, role="user", content=body.content.strip())
-            if body.user_id:
-                user_message.id = body.user_id
-            db.add(user_message)
-            db.flush()
+        # if not body.regenerate:  # Disabled: every request now stores a new user message.
+        user_message = Message(conversation_id=conversation_id, role="user", content=body.content.strip())
+        if body.user_id:
+            user_message.id = body.user_id
+        db.add(user_message)
+        db.flush()
         assistant = Message(conversation_id=conversation_id, role="assistant", content="", status="stopped")
         assistant.created_at = now() + timedelta(microseconds=1)
         if body.assistant_id:
@@ -281,7 +313,7 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
         db.add(assistant)
         db.commit()
         assistant_id = assistant.id
-        user_json = message_json(user_message) if user_message else None
+        user_json = message_json(user_message)
         # Drop the database connection while the model and remote tools run.
         db.close()
 
@@ -321,7 +353,9 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
                             yield json.dumps({"type": "delta", "text": item}) + "\n"
                 if not content:
                     raise ValueError("Empty response")
-                status = "complete"
+                # Keep a handled notebook error's own reply and metadata in the final event.
+                status = "error" if any(t['name'] == 'deep_contract_agent' and t['status'] == 'error'
+                                        for t in tool_runs.values()) else "complete"
             except asyncio.CancelledError:
                 raise
             except Exception as error:

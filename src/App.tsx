@@ -5,11 +5,11 @@ import Answer from './Answer';
 import Thinking, { type ProgressStage } from './Thinking';
 import { api, failedResponseContent, isLive } from './api';
 import { ToolDetails } from './ToolDetails';
-import { ConversationHistory, ConversationSearch, ChatActions, searchShortcut } from './ConversationList';
+import { ConversationSearch, ChatActions, searchShortcut } from './ConversationList';
 import { demoAnswer, makeConversation, makeMessage, readStored, uuid } from './demo';
 import type { AppSession, Conversation, Message, User } from './types';
 
-type View = 'home' | 'chat' | 'history' | 'library';
+type View = 'home' | 'chat' | 'library';
 type Modal = 'search' | 'settings' | 'delete' | 'rename' | 'about' | null;
 
 function Mark({ small = false }: { small?: boolean }) { return <span className={`brand-mark ${small ? 'small' : ''}`} aria-hidden="true">AIA</span>; }
@@ -57,6 +57,14 @@ export default function App() {
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [commentTarget, setCommentTarget] = useState<{ cid: string; mid: string } | null>(null);
   const [note, setNote] = useState('');
+  const [feedbackTarget, setFeedbackTarget] = useState<{ cid: string; mid: string } | null>(null);
+  const [feedbackNote, setFeedbackNote] = useState('');
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const feedbackLock = useRef(false);
+  const [editingNote, setEditingNote] = useState<{ cid: string; mid: string; id: string } | null>(null);
+  const [editedNote, setEditedNote] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+  const noteEditLock = useRef(false);
   const [toast, setToast] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressStage>('queued');
@@ -110,11 +118,14 @@ export default function App() {
   const newChat = () => { nearBottom.current = true; setSearchTarget(null); setShowJump(false); setActiveId(null); setView('home'); setInput(''); setCommentTarget(null); setSidebar(false); setTimeout(() => inputRef.current?.focus(), 0); };
   const patchConversation = async (id: string, patch: Partial<Pick<Conversation, 'title' | 'pinned' | 'archived'>>) => { if (isLive) { const next = await api.update(id, patch); update(id, () => next); } else update(id, c => ({ ...c, ...patch })); };
   const setMessage = async (cid: string, message: Message, patch: Partial<Pick<Message, 'feedback' | 'saved'>>) => { const next = { ...message, ...patch }; if (isLive) await api.feedback(message.id, next.feedback, next.saved); update(cid, c => ({ ...c, messages: c.messages.map(m => m.id === message.id ? next : m) })); };
-  const send = async (regenerate = false) => {
-    if (lock.current || (!regenerate && !input.trim())) return;
+  // Regenerate answer is disabled; sending always creates a new user turn.
+  // const send = async (regenerate = false) => {
+  const send = async () => {
+    if (lock.current || !input.trim()) return;
     lock.current = true;
     nearBottom.current = true; setSearchTarget(null);
-    const content = regenerate ? active?.messages.filter(m => m.role === 'user').at(-1)?.content || '' : input.trim();
+    // const content = regenerate ? active?.messages.filter(m => m.role === 'user').at(-1)?.content || '' : input.trim();
+    const content = input.trim();
     let conversation = active;
     let assistant: Message | undefined;
     let localUser: Message | undefined;
@@ -123,11 +134,12 @@ export default function App() {
       if (!conversation) { conversation = isLive ? await api.create(input.trim().slice(0, 70)) : makeConversation(input.trim().slice(0, 70)); setConversations(cs => [conversation!, ...cs]); }
       const id = conversation.id;
       setActiveId(id); setView('chat'); setBusyId(id); setProgress('queued'); setInput('');
-      assistant = makeMessage('assistant', ''); localUser = regenerate ? undefined : makeMessage('user', content);
+      // localUser = regenerate ? undefined : makeMessage('user', content);
+      assistant = makeMessage('assistant', ''); localUser = makeMessage('user', content);
       const aid = assistant.id;
       update(id, c => ({ ...c, updatedAt: new Date().toISOString(), messages: [...c.messages, ...(localUser ? [localUser] : []), assistant!] }));
       if (isLive) {
-        const result = await api.send(id, content, text => update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? { ...m, content: m.content + text } : m) })), controller.signal, regenerate, tool => update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? { ...m, tools: [...(m.tools || []).filter(t => t.id !== tool.id), tool] } : m) })), { user: localUser?.id, assistant: aid }, setProgress);
+        const result = await api.send(id, content, text => update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? { ...m, content: m.content + text } : m) })), controller.signal, tool => update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? { ...m, tools: [...(m.tools || []).filter(t => t.id !== tool.id), tool] } : m) })), { user: localUser?.id, assistant: aid }, setProgress);
         update(id, c => ({ ...c, messages: c.messages.map(m => m.id === aid ? result.assistant : m.id === localUser?.id && result.user ? result.user : m) }));
       } else {
         const answer = demoAnswer();
@@ -145,6 +157,41 @@ export default function App() {
   };
   const openSettings = () => { setSettingsTab('General'); setModal('settings'); safe(async () => setSessions(isLive ? await api.sessions() : [{ id: 'demo-session', device: 'This browser', createdAt: new Date().toISOString(), expiresAt: '', current: true }])); };
   const logout = async () => { abortRef.current?.abort(); if (isLive) await api.logout(); else sessionStorage.setItem('atlas.signed-out', 'true'); setUser(null); setModal(null); setCommentTarget(null); newChat(); };
+  const submitNegativeFeedback = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!feedbackTarget || !feedbackNote.trim() || feedbackNote.length > 4000 || feedbackLock.current) return;
+    const target = feedbackTarget;
+    const message = conversations.find(c => c.id === target.cid)?.messages.find(m => m.id === target.mid);
+    if (!message) return;
+    feedbackLock.current = true; setSubmittingFeedback(true);
+    try {
+      const text = feedbackNote.trim();
+      const next: Message = isLive ? await api.feedback(message.id, 'down', message.saved, text)
+        : { ...message, feedback: 'down', comments: [...message.comments, { id: uuid(), text, createdAt: new Date().toISOString() }] };
+      update(target.cid, c => ({ ...c, messages: c.messages.map(m => m.id === target.mid ? next : m) }));
+      setFeedbackTarget(null); setFeedbackNote('');
+      setCommentTarget(target); setNote('');
+    } catch (error) { notify(error instanceof Error ? error.message : 'Unable to save feedback.'); }
+    finally { feedbackLock.current = false; setSubmittingFeedback(false); }
+  };
+  const closeNoteEditor = () => { if (!noteEditLock.current) { setEditingNote(null); setEditedNote(''); } };
+  const saveEditedNote = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingNote || !editedNote.trim() || editedNote.length > 4000 || noteEditLock.current) return;
+    const target = editingNote;
+    const original = conversations.find(c => c.id === target.cid)?.messages.find(m => m.id === target.mid)?.comments.find(n => n.id === target.id);
+    if (!original) return;
+    noteEditLock.current = true; setSavingNote(true);
+    try {
+      const text = editedNote.trim();
+      const updated = isLive ? await api.editComment(target.id, text) : { ...original, text };
+      update(target.cid, c => ({ ...c, messages: c.messages.map(m => m.id === target.mid
+        ? { ...m, comments: m.comments.map(n => n.id === target.id ? updated : n) } : m) }));
+      setEditingNote(null); setEditedNote('');
+      notify('Note saved');
+    } catch (error) { notify(error instanceof Error ? error.message : 'Unable to save note.'); }
+    finally { noteEditLock.current = false; setSavingNote(false); }
+  };
   const addComment = async (e: FormEvent) => { e.preventDefault(); if (!note.trim() || !commentTarget) return; const target = commentTarget; const text = note.trim(); await safe(async () => { const comment = isLive ? await api.comment(target.mid, text) : { id: uuid(), text, createdAt: new Date().toISOString() }; update(target.cid, c => ({ ...c, messages: c.messages.map(m => m.id === target.mid ? { ...m, comments: [...m.comments, comment] } : m) })); setNote(''); }); };
 
   const composer = <div className={`composer-wrap ${view === 'chat' ? 'chat-composer' : ''}`}>
@@ -163,11 +210,11 @@ export default function App() {
     <aside className={`sidebar ${sidebar ? 'is-open' : ''}`}>
       <div className="brand-row"><button className="brand" onClick={newChat}><span className="wordmark">AIA<span className="brand-dot" aria-hidden="true">.</span></span></button><IconButton label="Close navigation" onClick={() => { setSidebar(false); if (window.innerWidth > 760) setNavCollapsed(true); }}><PanelLeftClose size={17} /></IconButton></div>
       <button className="new-chat" onClick={newChat}><Plus size={17} /><span>New conversation</span><span className="new-shortcut">↗</span></button>
-      <nav className="main-nav" aria-label="Main navigation"><button onClick={() => { setSidebar(false); setModal('search'); }}><Search size={18} /><span>Search</span><kbd>{searchShortcut}</kbd></button><button className={view === 'history' ? 'selected' : ''} onClick={() => { setView('history'); setSidebar(false); setCommentTarget(null); }}><History size={18} /><span>Conversations</span><span className="nav-count">{visible.length}</span></button><button className={view === 'library' ? 'selected' : ''} onClick={() => { setView('library'); setSidebar(false); setCommentTarget(null); }}><Bookmark size={18} /><span>Saved responses</span>{saved.length > 0 && <span className="nav-count">{saved.length}</span>}</button></nav>
+      <nav className="main-nav" aria-label="Main navigation"><button onClick={() => { setSidebar(false); setModal('search'); }}><Search size={18} /><span>Search</span><kbd>{searchShortcut}</kbd></button><button className={view === 'library' ? 'selected' : ''} onClick={() => { setView('library'); setSidebar(false); setCommentTarget(null); }}><Bookmark size={18} /><span>Saved responses</span>{saved.length > 0 && <span className="nav-count">{saved.length}</span>}</button></nav>
       <div className="sidebar-conversations"><div className="sidebar-section-title"><span>CONVERSATIONS</span><span className="conversation-total">{visible.length}</span></div>{visible.map(c => <div className={`sidebar-chat ${activeId === c.id && view === 'chat' ? 'selected' : ''}`} key={c.id}><button className="history-link" onClick={() => openConversation(c.id)}><MessageSquare size={15} /><span>{c.title}</span></button><ChatActions title={c.title} disabled={busyId === c.id} onRename={() => renameChat(c.id)} onDelete={() => deleteChat(c.id)} /></div>)}</div>
     </aside>
     <main className="main-shell">
-      <header className="topbar"><div className="breadcrumb"><button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => { setNavCollapsed(false); setSidebar(true); }}><Menu size={20} /></button><span className="workspace-name"><span className="workspace-symbol" aria-hidden="true" />AIA</span><ChevronRight size={13} /><strong>{view === 'home' ? 'New conversation' : view === 'chat' ? (active?.title || 'Conversation') : view === 'history' ? 'Conversations' : 'Saved responses'}</strong></div><div className="topbar-right"><IconButton label="About AIA" onClick={() => setModal('about')}><CircleHelp size={18} /></IconButton><span className="topbar-divider" /><button className="header-profile" onClick={openSettings} aria-label={`Account settings for ${profileName}`} title={profileName}><span className="header-profile-name">{profileName}</span><span className="avatar" aria-hidden="true">{profileInitial}</span></button></div></header>
+      <header className="topbar"><div className="breadcrumb"><button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => { setNavCollapsed(false); setSidebar(true); }}><Menu size={20} /></button><span className="workspace-name"><span className="workspace-symbol" aria-hidden="true" />AIA</span><ChevronRight size={13} /><strong>{view === 'home' ? 'New conversation' : view === 'chat' ? (active?.title || 'Conversation') : 'Saved responses'}</strong></div><div className="topbar-right"><IconButton label="About AIA" onClick={() => setModal('about')}><CircleHelp size={18} /></IconButton><span className="topbar-divider" /><button className="header-profile" onClick={openSettings} aria-label={`Account settings for ${profileName}`} title={profileName}><span className="header-profile-name">{profileName}</span><span className="avatar" aria-hidden="true">{profileInitial}</span></button></div></header>
       <div className={`content-layout ${commentTarget ? 'with-comments' : ''}`}><div className="main-content">
         {view === 'home' && <div className="home-content"><WelcomeMark />{composer}</div>}
         {view === 'chat' && active && <>
@@ -182,14 +229,14 @@ export default function App() {
               <div className="message-avatar">{m.role === 'assistant' ? <Mark small /> : <span className="avatar">{profileInitial}</span>}</div>
               <div className="message-main">
                 <div className="message-meta"><strong>{m.role === 'assistant' ? 'AIA' : 'You'}</strong><time dateTime={m.createdAt} title={new Date(m.createdAt).toLocaleString()}>{new Date(m.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time></div>
-                <div className="markdown">{m.content ? (m.role === 'user' ? <div className="user-text">{m.content}</div> : <Answer content={m.content} references={m.custom_outputs?.references} sourceDisplay={m.custom_outputs?.source_display} />) : <Thinking stage={progress} />}</div>
+                <div className="markdown">{m.content ? (m.role === 'user' ? <div className="user-text">{m.content}</div> : <Answer content={m.content} references={m.custom_outputs?.references} sourceDisplay={m.custom_outputs?.source_display} results={m.custom_outputs?.genie_results} />) : <Thinking stage={progress} />}</div>
                 <ToolDetails tools={m.tools} />
                 {m.status === 'stopped' && <span className="response-status">Response stopped</span>}
                 {m.status === 'error' && <span className="response-status error">Response interrupted. You can try again.</span>}
                 {m.role === 'assistant' && m.content && !(busyId === active.id && index === active.messages.length - 1) && <div className="response-actions">
                   <IconButton label="Copy response" onClick={() => void safe(async () => { await navigator.clipboard.writeText(m.content); notify('Response copied'); })}><Copy size={16} /></IconButton>
                   <IconButton label="Helpful response" active={m.feedback === 'up'} onClick={() => void safe(() => setMessage(active.id, m, { feedback: m.feedback === 'up' ? null : 'up' }))}><ThumbsUp size={16} /></IconButton>
-                  <IconButton label="Unhelpful response" active={m.feedback === 'down'} onClick={() => void safe(() => setMessage(active.id, m, { feedback: m.feedback === 'down' ? null : 'down' }))}><ThumbsDown size={16} /></IconButton>
+                  <IconButton label="Unhelpful response" active={m.feedback === 'down'} onClick={() => { if (m.feedback === 'down') void safe(() => setMessage(active.id, m, { feedback: null })); else { setFeedbackTarget({ cid: active.id, mid: m.id }); setFeedbackNote(''); } }}><ThumbsDown size={16} /></IconButton>
                   <span className="action-separator" />
                   <button className={`comment-action ${commentTarget?.mid === m.id ? 'active' : ''}`} onClick={() => { setCommentTarget({ cid: active.id, mid: m.id }); setNote(''); }}><MessageCircle size={16} />{m.comments.length ? `${m.comments.length} note${m.comments.length > 1 ? 's' : ''}` : 'Add note'}</button>
                   <IconButton label={m.saved ? 'Unsave response' : 'Save response'} active={m.saved} onClick={() => void safe(() => setMessage(active.id, m, { saved: !m.saved }))}><Bookmark size={16} /></IconButton>
@@ -199,15 +246,23 @@ export default function App() {
             {showJump && <button className="jump-latest" aria-label="Jump to latest message" onClick={() => { setSearchTarget(null); nearBottom.current = true; bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'instant' }); }}><ArrowDown size={17} /> Latest</button>}
           </div>{composer}
         </>}
-        {view === 'history' && <ConversationHistory conversations={conversations} onOpen={openConversation} onNew={newChat}
-          onPatch={(id, patch) => void safe(() => patchConversation(id, patch))} />}
+
         {view === 'library' && <div className="collection-page"><h1>Saved responses</h1>{saved.length ? <div className="saved-grid">{saved.map(({ c, m }) => <article className="saved-card" key={m.id}><div><Mark small /><IconButton label="Unsave response" active onClick={() => void safe(() => setMessage(c.id, m, { saved: false }))}><Bookmark size={16} /></IconButton></div><h2>{c.title}</h2><p>{m.content.replace(/[#*`]/g, '').slice(0, 240)}…</p><button className="text-button" onClick={() => openConversation(c.id)}>Open conversation <ArrowRight size={15} /></button></article>)}</div> : <div className="empty-state"><Bookmark size={35} /><h2>No saved responses</h2><p>Tap the bookmark below any response to save it here.</p><button className="secondary-button" onClick={newChat}>New chat <ArrowRight size={15} /></button></div>}</div>}
-      </div>{commentTarget && noteMessage && <aside className="notes-panel"><div className="notes-header"><div><MessageCircle size={18} /><h2>Response notes</h2></div><IconButton label="Close response notes" onClick={() => setCommentTarget(null)}><X size={18} /></IconButton></div><div className="note-context"><span>AIA RESPONSE</span><p>{noteMessage.content.slice(0, 150).replace(/[#*]/g, '')}…</p></div><div className="notes-list">{noteMessage.comments.length === 0 && <div className="notes-empty"><PenLine size={24} /><h3>No notes yet</h3></div>}{noteMessage.comments.map(n => <div className="note-card" key={n.id}><div><span className="avatar small-avatar">{profileInitial}</span><strong>You</strong><IconButton label="Delete note" onClick={() => void safe(async () => { if (isLive) await api.removeComment(n.id); update(commentTarget.cid, c => ({ ...c, messages: c.messages.map(m => m.id === commentTarget.mid ? { ...m, comments: m.comments.filter(x => x.id !== n.id) } : m) })); })}><Trash2 size={13} /></IconButton></div><p>{n.text}</p><time>{new Date(n.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</time></div>)}</div><form className="note-form" onSubmit={e => void addComment(e)}><textarea aria-label="Write a response note" placeholder="Add a note…" value={note} maxLength={4000} onChange={e => setNote(e.target.value)} /><button className="primary-button" disabled={!note.trim()}>Add note <ArrowUp size={15} /></button></form><p className="notes-private"><ShieldCheck size={12} /> Only visible to you</p></aside>}</div>
+      </div>{commentTarget && noteMessage && <aside className="notes-panel"><div className="notes-header"><div><MessageCircle size={18} /><h2>Response notes</h2></div><IconButton label="Close response notes" onClick={() => setCommentTarget(null)}><X size={18} /></IconButton></div><div className="note-context"><span>AIA RESPONSE</span><p>{noteMessage.content.slice(0, 150).replace(/[#*]/g, '')}…</p></div><div className="notes-list">{noteMessage.comments.length === 0 && <div className="notes-empty"><PenLine size={24} /><h3>No notes yet</h3></div>}{noteMessage.comments.map(n => <div className="note-card" key={n.id}><div><span className="avatar small-avatar">{profileInitial}</span><strong>You</strong><IconButton label="Edit note" onClick={() => { setEditingNote({ ...commentTarget, id: n.id }); setEditedNote(n.text); }}><PenLine size={13} /></IconButton><IconButton label="Delete note" onClick={() => void safe(async () => { if (noteMessage.feedback === 'down' && noteMessage.comments.length <= 1) throw new Error('Remove thumbs-down feedback before deleting its last note.'); if (isLive) await api.removeComment(n.id); update(commentTarget.cid, c => ({ ...c, messages: c.messages.map(m => m.id === commentTarget.mid ? { ...m, comments: m.comments.filter(x => x.id !== n.id) } : m) })); })}><Trash2 size={13} /></IconButton></div><p>{n.text}</p><time>{new Date(n.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</time></div>)}</div><form className="note-form" onSubmit={e => void addComment(e)}><textarea aria-label="Write a response note" placeholder="Add a note…" value={note} maxLength={4000} onChange={e => setNote(e.target.value)} /><button className="primary-button" disabled={!note.trim()}>Add note <ArrowUp size={15} /></button></form><p className="notes-private"><ShieldCheck size={12} /> Only visible to you</p></aside>}</div>
     </main>
     {toast && <div className="toast" role="status"><CheckCheck size={17} />{toast}<button aria-label="Dismiss notification" onClick={() => setToast('')}><X size={14} /></button></div>}
     {modal === 'search' && <Dialog title="Search conversations" close={() => setModal(null)} wide><ConversationSearch conversations={conversations} onOpen={openConversation} /></Dialog>}
     {modal === 'rename' && <Dialog title="Rename conversation" close={() => { if (!savingTitle) setModal(null); }}><form onSubmit={e => { e.preventDefault(); if (!targetId || !renameTitle.trim() || savingTitle) return; setSavingTitle(true); void safe(async () => { await patchConversation(targetId, { title: renameTitle.trim() }); setModal(null); notify('Conversation renamed'); }).finally(() => setSavingTitle(false)); }}><label className="rename-label" htmlFor="conversation-title">Conversation name</label><input id="conversation-title" className="rename-input" data-autofocus value={renameTitle} maxLength={120} onChange={e => setRenameTitle(e.target.value)} /><div className="dialog-footer"><button type="button" className="secondary-button" disabled={savingTitle} onClick={() => setModal(null)}>Cancel</button><button className="primary-button" disabled={savingTitle || !renameTitle.trim()}>{savingTitle ? 'Saving…' : 'Save'}</button></div></form></Dialog>}
     {modal === 'delete' && <Dialog title="Delete conversation?" close={() => setModal(null)}><p className="dialog-copy">This removes “{conversations.find(c => c.id === targetId)?.title}” and its messages, notes, and saved responses. This cannot be undone.</p><div className="dialog-footer"><button className="secondary-button" onClick={() => setModal(null)}>Keep conversation</button><button className="danger-button" onClick={() => void safe(async () => { if (targetId) { if (isLive) await api.remove(targetId); setConversations(cs => cs.filter(c => c.id !== targetId)); if (activeId === targetId) newChat(); setModal(null); notify('Conversation deleted'); } })}>Delete conversation</button></div></Dialog>}
+    {feedbackTarget && <Dialog title="What could be better?" close={() => { if (!feedbackLock.current) { setFeedbackTarget(null); setFeedbackNote(''); } }}><form className="note-form" onSubmit={e => void submitNegativeFeedback(e)}><label htmlFor="feedback-note">Add a note to submit thumbs-down feedback.</label><textarea id="feedback-note" aria-describedby="feedback-note-count" data-autofocus required maxLength={4000} value={feedbackNote} disabled={submittingFeedback} onChange={e => setFeedbackNote(e.target.value)} placeholder="What was incorrect or missing?" /><small id="feedback-note-count" className="note-counter">{feedbackNote.length.toLocaleString()} / 4,000 characters</small><button className="primary-button" disabled={!feedbackNote.trim() || feedbackNote.length > 4000 || submittingFeedback}>{submittingFeedback ? 'Saving…' : 'Submit feedback'}</button></form></Dialog>}
+    {editingNote && <Dialog title="Edit note" close={closeNoteEditor}>
+      <form className="note-form" onSubmit={e => void saveEditedNote(e)}>
+        <label htmlFor="edit-response-note">Response note</label>
+        <textarea id="edit-response-note" aria-describedby="edit-note-count" data-autofocus required maxLength={4000} value={editedNote} disabled={savingNote} onChange={e => setEditedNote(e.target.value)} />
+        <small id="edit-note-count" className="note-counter">{editedNote.length.toLocaleString()} / 4,000 characters</small>
+        <div className="note-editor-actions"><button type="button" className="secondary-button" disabled={savingNote} onClick={closeNoteEditor}>Cancel</button><button className="primary-button" disabled={!editedNote.trim() || editedNote.length > 4000 || savingNote}>{savingNote ? 'Saving…' : 'Save note'}</button></div>
+      </form>
+    </Dialog>}
     {modal === 'settings' && <Dialog title="Settings" close={() => setModal(null)} wide><div className="settings-tabs">{['General', 'Sessions', 'Connections'].map(tab => <button className={settingsTab === tab ? 'selected' : ''} key={tab} onClick={() => setSettingsTab(tab)}>{tab}</button>)}</div>{settingsTab === 'General' && <div className="settings-body"><div className="account-summary"><span className="avatar">{profileInitial}</span><div><strong>{profileName}</strong><span>{user.email}</span></div><span className="soft-badge">{isLive ? 'Databricks authentication' : 'Preview'}</span></div><div className="setting-row"><div><strong>Compact conversations</strong><p>Reduce message spacing.</p></div><button role="switch" aria-checked={compact} aria-label="Compact conversations" className={`toggle ${compact ? 'on' : ''}`} onClick={() => { setCompact(!compact); localStorage.setItem('atlas.compact', String(!compact)); }}><span /></button></div><button className="signout-button" onClick={() => void safe(logout)}><LogOut size={16} />{isLive ? 'Sign out of AIA' : 'Leave preview'}</button></div>}{settingsTab === 'Sessions' && <div className="settings-body"><p className="dialog-copy">Sign out of this browser here. Other signed-in devices are managed in Databricks.</p>{sessions.map(s => <div className="session-row" key={s.id}><Monitor size={22} /><div><strong>{s.device}</strong><span>{s.current ? 'This session' : `Signed in ${new Date(s.createdAt).toLocaleDateString()}`}</span></div><button className="secondary-button" onClick={() => void safe(async () => { if (s.current) await logout(); else notify('Manage other signed-in devices in Databricks.'); })}>{s.current ? 'Sign out' : 'Revoke'}</button></div>)}</div>}{settingsTab === 'Connections' && <div className="settings-body">{[[ShieldCheck, 'Databricks sign-in', 'Workspace account', isLive ? 'Connected' : 'Preview'], [Sparkles, 'Contract assistant', 'Contract search', isLive ? 'Configured' : 'Preview'], [History, 'History', isLive ? (historyStorage === 'lakebase' ? 'Lakebase' : 'Local database') : 'This browser', isLive && historyStorage === 'lakebase' ? 'Connected' : 'Local']].map(([Icon, title, desc, status]) => { const I = Icon as typeof ShieldCheck; return <div className="connection-row" key={String(title)}><I size={20} /><div><strong>{String(title)}</strong><span>{String(desc)}</span></div><span className="soft-badge">{String(status)}</span></div>; })}</div>}</Dialog>}
     {modal === 'about' && <Dialog title="About AIA" close={() => setModal(null)}><div className="about-body"><Mark /><div className="about-status"><span className="demo-dot" />{isLive ? 'Databricks' : 'UI preview'}</div><p className="fine-print">{isLive ? 'Chat history is saved ' + (historyStorage === 'lakebase' ? 'in Lakebase.' : 'in the local database.') : 'Preview conversations and notes stay in this browser.'}</p><button className="primary-button" onClick={() => setModal(null)}>Close <ArrowRight size={16} /></button></div></Dialog>}
   </div>;
