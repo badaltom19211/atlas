@@ -9,9 +9,9 @@ const result: Result = { id: 'G1', title: 'Contracts by status', columns: ['Stat
 
 describe('Genie result views', () => {
   it('shows actual rows, accessible view controls and sources alongside the answer', () => {
-    const html = renderToStaticMarkup(<Answer content="12 active contracts." results={[result]} sourceDisplay="grouped" references={[{ id: 'G1', kind: 'genie', label: 'Count', sql: 'SELECT count(*)', has_rows: true, url: null, used_in_answer: true }]} />);
-    for (const text of ['Genie results', 'Contracts by status', '<th scope="col">Status', '>Active</td>', '>12</td>', 'Table', 'Bar', 'Pie', 'View SQL']) expect(html).toContain(text);
-    expect(html).not.toContain('Retrieved references');
+    const html = renderToStaticMarkup(<Answer content="12 active contracts." results={[{ ...result, columns: ['contract_status', 'contractCount'] }]} sourceDisplay="grouped" references={[{ id: 'G1', kind: 'genie', label: 'Count', sql: 'SELECT count(*)', has_rows: true, url: null, used_in_answer: true }]} />);
+    for (const text of ['12 active contracts.', '<th scope="col">Contract status', '<th scope="col">Contract Count', '>Active</td>', '>12</td>', 'Table', 'Bar', 'Pie', 'View SQL']) expect(html).toContain(text);
+    for (const text of ['Retrieved references', 'Genie results', 'Contracts by status', 'contract_status', 'contractCount']) expect(html).not.toContain(text);
   });
   it('preserves formatted values and rejects ambiguous or unsafe numbers', () => {
     expect(numericCell('$1,200.50')).toEqual({ value: 1200.5, unit: '$' });

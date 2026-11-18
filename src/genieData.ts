@@ -2,6 +2,13 @@ import type { GenieResult } from './types';
 
 const empty = /^(?:null|none|n\/a|—|-)$/i;
 
+// Display names only: preserve the original column keys and values for charting.
+export function columnLabel(name: string): string {
+  const label = name.replace(/_/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2').replace(/\s+/g, ' ').trim();
+  return label ? label[0].toUpperCase() + label.slice(1) : 'Column';
+}
+
 export function numericCell(raw: string): { value: number; unit: string } | null {
   const text = raw.trim();
   if (!text || empty.test(text)) return null;
@@ -29,11 +36,11 @@ export function defaultAxes(result: GenieResult): { dimension: number; measure: 
 export function chartData(result: GenieResult, dimension: number, measure: number) {
   const points = result.rows.map(row => ({ label: row[dimension] ?? '', raw: row[measure] ?? '', value: numericCell(row[measure] ?? '')?.value ?? NaN }));
   let reason = '';
-  if (result.truncated) reason = 'Charts need a complete result. Ask Genie for fewer rows or a grouped summary.';
+  if (result.truncated) reason = 'Charts need a complete result. Ask for fewer rows or a grouped summary.';
   else if (dimension < 0 || measure < 0 || dimension === measure || !numericColumns(result).includes(measure)) reason = 'Choose a category and a numeric value to create a chart.';
   else if (!points.length || points.some(point => !point.label.trim() || empty.test(point.label) || !Number.isFinite(point.value))) reason = 'Charts need a category and value for every row.';
-  else if (new Set(points.map(point => point.label.trim())).size !== points.length) reason = 'This category repeats. Choose a unique category or ask Genie to group the results.';
-  else if (points.length > 40) reason = 'Ask Genie for 40 or fewer categories to show a chart.';
+  else if (new Set(points.map(point => point.label.trim())).size !== points.length) reason = 'This category repeats. Choose a unique category or ask to group the results.';
+  else if (points.length > 40) reason = 'Ask for 40 or fewer categories to show a chart.';
   const total = points.reduce((sum, point) => sum + point.value, 0);
   const pieReason = reason || (points.length < 2 || points.length > 12 ? 'Pie charts need 2–12 categories.' : points.some(point => point.value < 0) || !Number.isFinite(total) || total <= 0 ? 'Pie charts need non-negative values with a positive total.' : '');
   return { points, total, barReason: reason, pieReason };
