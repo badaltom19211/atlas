@@ -22,6 +22,16 @@ with known page ranges under Sources. Internal citation tags are validated befor
 being removed from the displayed answer. Older chats keep their inline references.
 Existing chats, database tables and authentication remain compatible.
 
+To export a conversation, open its sidebar **...** menu, choose **Export PDF**, then
+**Save as PDF** in the preview. Select **Save as PDF** as the browser's print destination
+and turn off **Headers and footers**. The export includes every question and answer
+and the available answer tables; chart data is exported as a table. Citation tags,
+source sections/links, SQL source metadata, feedback and notes are excluded.
+The original conversation is unchanged. Export is disabled while that conversation
+is generating an answer. A stopped/error answer or truncated table is marked as
+incomplete. This runs in the browser; no new backend dependency, app.yaml setting,
+database migration or external PDF service is needed.
+
 Contract PDF sources now open through the authenticated `/api/documents/pdf?path=...`
 route in a new tab. The backend streams the file from the Databricks Files API with
 the signed-in user's token, including byte-range requests used by PDF viewers.
