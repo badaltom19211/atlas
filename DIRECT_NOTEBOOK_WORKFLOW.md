@@ -1,4 +1,35 @@
-# 17 November latest notebook integration
+# 19 November notebook v7 and shared configuration
+
+`server/deep_agent_v1.py` now follows `deep_agent_v1 (7).ipynb`. Its
+`contract_assistant()` → `chat()` → `ask()` chain forwards `use_genie`/`use_rag`.
+`resolve_sources()` uses the configured defaults; `search_genie_and_rag()` only
+submits enabled branches. `build_pipeline_prompt()` selects the notebook's exact
+combined or single-source prompt. Both sources disabled is rejected.
+
+`get_contract_agent()` caches by source mode **within one request**, using
+`RequestRuntime.agents`; it does not share credentials or agents between users.
+The modes are retained in saved response metadata and optional trace tags.
+Failure of the only enabled source raises the existing safe provider error;
+with both enabled, one failing source still produces a partial-answer warning.
+
+The root `contract_agent_config.py` contains the supplied configuration's
+non-secret constants. `server/config.py` maps them to Settings with environment
+overrides. Source toggles, model temperatures/token limits, Genie timeout,
+retrieval columns/query type and Vector Search endpoint are configurable. The
+app keeps its injected host/user token and existing numeric MLflow experiment ID;
+the supplied config's global credentials and per-user experiment setup are excluded.
+
+The new index is `dev_diamonddaas.aia_contract_chatbot.ai_contextualized_chunk_index`
+on `aia_contract_search`. Update/remove the old `DATABRICKS_CONTRACT_INDEX` override
+before redeploying. Existing glossary-folder overrides, Lakebase and MLflow resource
+bindings should remain configured. The supplied glossary path is retained in the
+shared defaults as a reference; enable glossary loading explicitly as before.
+
+The [ingestion notebook](setup/ingestion/README.md) is a separate Job producing this
+index. It never runs in a chat request. Its notebook setup adaptations and remaining
+table/removal/sync prerequisites are documented with the package.
+
+# 17 November scope integration (retained)
 
 The workflow from `deep_agent_v1 (6).ipynb` is integrated in the existing
 `server/deep_agent_v1.py`. The separate `server/app_scope.py` classifier is removed.
@@ -209,8 +240,8 @@ Genie sources retain the actual returned SQL, title and conversation link.
 Document sources retain the retrieved document name, permitted workspace link
 and known page. Unknown IDs are rejected before citation markers are removed.
 React receives typed references, not notebook-generated HTML. Its existing
-collapsible Sources UI shows cited SQL and up to three grouped PDFs.
-A failed source produces an explicit partial-answer warning. Both sources failing
+collapsible Sources UI shows cited SQL and all cited PDFs grouped by document/page.
+A failed source produces an explicit partial-answer warning. All enabled sources failing
 rejects the answer. HTTP/provider bodies are not sent to the model or browser.
 Citation validation checks IDs; it does not prove that every sentence is true.
 

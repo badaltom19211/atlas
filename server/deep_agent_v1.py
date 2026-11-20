@@ -1,4 +1,4 @@
-"""App-compatible export synchronized with deep_agent_v1 (6).ipynb (17 November 2026).
+"""App-compatible export synchronized with deep_agent_v1 (7).ipynb (19 November 2026).
 
 The notebook's prompts, Genie/RAG tools and follow-up functions live here.
 App entry point: contract_assistant(message, token=..., history=..., settings=..., ...).
@@ -15,7 +15,6 @@ from .citations import prepare_source_display, without_model_sources, normalize_
 
 mlflow = ScopedTracing()
 
-RAG_COLUMNS = ["chunk_id", "document_title", "section_title", "page_start", "page_end", "contextualized_text", "citation"]
 
 
 def reasoning_options(model=None):
@@ -42,7 +41,8 @@ def query_genie(query: str):
     headers = {"Authorization": f"Bearer {_runtime().token}", "Content-Type": "application/json", "Accept": "text/event-stream"}
     payload = {"input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": query}]}]}
 
-    with requests.post(_runtime().genie_url, headers=headers, json=payload, stream=True, timeout=(10, 60)) as r:
+    with requests.post(_runtime().genie_url, headers=headers, json=payload, stream=True,
+                       timeout=(10, _runtime().settings.genie_timeout_seconds)) as r:
         r.raise_for_status()
         for line in r.iter_lines(decode_unicode=True):
             _runtime().check()
@@ -104,9 +104,6 @@ RAG_PROMPT = """You are a contract assistant. Answer the user's question using O
 
 from databricks.vector_search.reranker import DatabricksReranker
 
-RERANK_COLUMNS = ["contextualized_text", "document_title", "section_title"]
-
-RERANKER = DatabricksReranker(columns_to_rerank=RERANK_COLUMNS)
 
 @mlflow.trace(name="embed_query", span_type=SpanType.EMBEDDING)
 def embed_query(query: str) -> list[float]:
@@ -119,14 +116,17 @@ def embed_query(query: str) -> list[float]:
 def retrieve(query: str, k: int | None = None, rerank: bool = True) -> list[dict]:
     """Hybrid (vector + keyword) search over the contract chunk index, reranked, top k chunks."""
     _runtime().check()
-    k = k or _runtime().settings.rag_top_k
+    settings = _runtime().settings
+    k = k or settings.rag_top_k
+    columns = list(settings.rag_columns)
+    rerank_columns = list(settings.rerank_columns)
     with mlflow.start_span(name="vector_search_retrieve", span_type=SpanType.RETRIEVER) as span:
-        span.set_inputs({"query": query, "k": k, "index": _runtime().settings.contract_index, "query_type": "HYBRID",
-                         "reranker": RERANK_COLUMNS if rerank else None})
+        span.set_inputs({"query": query, "k": k, "index": settings.contract_index, "query_type": settings.rag_query_type,
+                         "reranker": rerank_columns if rerank else None})
         vec = embed_query(query)
-        res = _runtime().vs_index.similarity_search(query_text=query, query_vector=vec, columns=RAG_COLUMNS,
-                                         num_results=k, query_type="HYBRID",
-                                         reranker=RERANKER if rerank else None, disable_notice=True)
+        res = _runtime().vs_index.similarity_search(query_text=query, query_vector=vec, columns=columns,
+                                         num_results=k, query_type=settings.rag_query_type,
+                                         reranker=DatabricksReranker(columns_to_rerank=rerank_columns) if rerank else None, disable_notice=True)
         cols = [c["name"] for c in res["manifest"]["columns"]]
         rows = [dict(zip(cols, row)) for row in res.get("result", {}).get("data_array", [])]
         # Document format so the MLflow UI renders retrieved chunks
@@ -140,7 +140,9 @@ def generate_answer(messages: list[dict]) -> str:
     span = mlflow.get_current_active_span()
     if span:
         span.set_attribute("model", _runtime().settings.agent_model)
-    resp = _runtime().oai.chat.completions.create(model=_runtime().settings.agent_model, temperature=0.1, max_tokens=1200, messages=messages, **reasoning_options())
+    resp = _runtime().oai.chat.completions.create(model=_runtime().settings.agent_model,
+        temperature=_runtime().settings.rag_temperature, max_tokens=_runtime().settings.rag_max_tokens,
+        messages=messages, **reasoning_options())
     return resp.choices[0].message.content
 
 CITATION_RE = re.compile(r"^\[(.*?)\]\((.*)\)$", re.DOTALL)
@@ -256,7 +258,8 @@ def _iso(d):
 
 def _llm_json(system: str, user: str) -> dict:
     _runtime().check()
-    resp = _runtime().oai.chat.completions.create(model=_runtime().settings.agent_model, temperature=0, max_tokens=500,
+    resp = _runtime().oai.chat.completions.create(model=_runtime().settings.agent_model,
+                                       temperature=_runtime().settings.json_temperature, max_tokens=_runtime().settings.json_max_tokens,
                                        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}], **reasoning_options())
     m = re.search(r"\{.*\}", resp.choices[0].message.content or "", re.DOTALL)
     try:
@@ -572,18 +575,30 @@ def metadata_aware_rag(query: str, metadata: dict | None = None):
     rag_text, rag_src = _safe(query_rag, rag_query)
     return rag_text, rag_src, meta, rag_query
 
-def search_genie_and_rag(query: str, metadata: dict | None = None) -> dict:
+def resolve_sources(use_genie: bool | None = None, use_rag: bool | None = None) -> tuple[bool, bool]:
+    """Which sources to use: None -> USE_GENIE / USE_RAG from app Settings. At least one must be on."""
+    g = _runtime().settings.use_genie if use_genie is None else bool(use_genie)
+    r = _runtime().settings.use_rag if use_rag is None else bool(use_rag)
+    if not (g or r):
+        raise ValueError("At least one source must be enabled (use_genie or use_rag).")
+    return g, r
+
+def search_genie_and_rag(query: str, metadata: dict | None = None, use_genie: bool | None = None,
+                         use_rag: bool | None = None) -> dict:
     """Call Genie with the question and the metadata-aware RAG, in parallel. Can be called directly.
     Metadata is extracted inside the RAG branch, so it runs while Genie is working.
-    Returns {'genie_text', 'genie_sources', 'rag_text', 'rag_sources', 'metadata', 'rag_query'}."""
+    use_genie / use_rag: switch a source off (None -> config default). A disabled source is never called.
+    Returns {'genie_text', 'genie_sources', 'rag_text', 'rag_sources', 'metadata', 'rag_query', 'use_genie', 'use_rag'}."""
+    use_genie, use_rag = resolve_sources(use_genie, use_rag)
     _runtime().report('searching')
     with ThreadPoolExecutor(max_workers=2) as pool:
         # copy_context() keeps the MLflow span (and RUN_STATE) inside each thread
-        genie_f = pool.submit(contextvars.copy_context().run, _safe, query_genie, query)
-        rag_f = pool.submit(contextvars.copy_context().run, metadata_aware_rag, query, metadata)
-        (genie_out, genie_src), (rag_out, rag_src, meta, rag_query) = genie_f.result(), rag_f.result()
+        genie_f = pool.submit(contextvars.copy_context().run, _safe, query_genie, query) if use_genie else None
+        rag_f = pool.submit(contextvars.copy_context().run, metadata_aware_rag, query, metadata) if use_rag else None
+        genie_out, genie_src = genie_f.result() if genie_f else ("", [])
+        rag_out, rag_src, meta, rag_query = rag_f.result() if rag_f else ("", [], metadata or {}, None)
     return {"genie_text": genie_out, "genie_sources": genie_src, "rag_text": rag_out, "rag_sources": rag_src,
-            "metadata": meta, "rag_query": rag_query}
+            "metadata": meta, "rag_query": rag_query, "use_genie": use_genie, "use_rag": use_rag}
 
 @tool
 def search_contracts(query: str) -> str:
@@ -591,15 +606,19 @@ def search_contracts(query: str) -> str:
     statuses) and contract document passages (clause text). Always pass the user's full question."""
     state = RUN_STATE.get() or {}
     # metadata is extracted from the agent's query here, unless ask() was given metadata (e.g. for a follow-up)
-    res = search_genie_and_rag(query, state.get("preset_metadata"))
+    res = search_genie_and_rag(query, state.get("preset_metadata"), state.get("use_genie"), state.get("use_rag"))
     _runtime().report('composing')
     state["metadata"], state["rag_query"] = res["metadata"], res["rag_query"]
     state["sources"] = {"genie": res["genie_sources"], "rag": res["rag_sources"]}
     span = mlflow.get_current_active_span()
     if span:
-        span.set_attribute("rag_query", res["rag_query"])
-    return ("=== RESULT SET A: structured contract records ===\n" + res["genie_text"] +
-            "\n\n=== RESULT SET B: contract document passages ===\n" + res["rag_text"])
+        span.set_attributes({"rag_query": res["rag_query"] or "", "use_genie": res["use_genie"], "use_rag": res["use_rag"]})
+    parts = []                                       # only the enabled sources are returned to the agent
+    if res["use_genie"]:
+        parts.append("=== RESULT SET A: structured contract records ===\n" + res["genie_text"])
+    if res["use_rag"]:
+        parts.append("=== RESULT SET B: contract document passages ===\n" + res["rag_text"])
+    return "\n\n".join(parts)
 
 PIPELINE_PROMPT = """You are a contract assistant for the contract management team.
 For every question about contracts, call search_contracts exactly once with the user's question.
@@ -623,13 +642,52 @@ Then write ONE merged answer:
 - Write clean prose, short bullets or a small markdown table. Refer to contracts by short natural names.
 - Never invent facts that are not in the tool output."""
 
-def build_contract_agent(model: str | None = None, temperature: float = 0.1, system_prompt: str = PIPELINE_PROMPT):
-    """Create the Deep Agent (LLM via Unity Gateway + search_contracts tool). Call again to change model or prompt."""
+SINGLE_SOURCE_PROMPT = """You are a contract assistant for the contract management team.
+For every question about contracts, call search_contracts exactly once with the user's question.
+The tool returns {what} (IDs like [{p}1]).
+
+Then write ONE answer:
+- Use ONLY the facts in the tool output. {hint}
+- NEVER mention where the information came from in the text: do not write 'Genie', 'RAG', 'database', 'structured data',
+  'record', 'records', 'document', 'passage', 'result set', 'the tool', 'according to ...', 'also states'. Just state the fact and its tag.
+- If facts conflict or refer to different contract versions, say so.
+- Cite every fact ONLY with its ID tag(s) right after it, e.g. [{p}1] or [{p}2]. Never write table names, file names,
+  section titles or page numbers as citations. Only cite an ID for facts it actually provided.
+- Cite as FEW IDs as possible: use the single most direct ID per fact (at most 2). Never cite an ID just because it was returned.
+- If nothing relevant was found at all, say you could not find this in the contracts.
+- Do not add a 'Sources' or 'References' section or line; it is appended automatically.
+- Write clean prose, short bullets or a small markdown table. Refer to contracts by short natural names.
+- Never invent facts that are not in the tool output."""
+
+def build_pipeline_prompt(use_genie: bool = True, use_rag: bool = True) -> str:
+    """System prompt for the enabled sources: both -> PIPELINE_PROMPT (merged answer), one -> SINGLE_SOURCE_PROMPT."""
+    if use_genie and use_rag:
+        return PIPELINE_PROMPT
+    if use_rag:
+        return SINGLE_SOURCE_PROMPT.format(what="contract document passages", p="D",
+                                           hint="Quote clause wording, terms, dates and amounts as stated in the passages.")
+    return SINGLE_SOURCE_PROMPT.format(what="structured contract records", p="G",
+                                       hint="Use the records for numbers, dates, statuses and lists.")
+
+def build_contract_agent(model: str | None = None, temperature: float | None = None, system_prompt: str | None = None,
+                         use_genie: bool | None = None, use_rag: bool | None = None):
+    """Build the notebook agent with the prompt for the enabled sources."""
     _runtime().check()
+    if system_prompt is None:
+        system_prompt = build_pipeline_prompt(*resolve_sources(use_genie, use_rag))
     model = model or _runtime().settings.agent_model
+    temperature = _runtime().settings.agent_temperature if temperature is None else temperature
     llm = ChatOpenAI(model=model, base_url=_runtime().gateway_url, api_key=_runtime().token,
                      temperature=temperature, timeout=60, max_retries=0, http_client=_runtime().http, **reasoning_options(model))
     return create_deep_agent(model=llm, tools=[search_contracts], system_prompt=system_prompt)
+
+def get_contract_agent(use_genie: bool | None = None, use_rag: bool | None = None):
+    """Cached Deep Agent for the given source mode (None -> config default)."""
+    _AGENTS = _runtime().agents  # Cache belongs only to this request, never shared across users.
+    key = resolve_sources(use_genie, use_rag)
+    if key not in _AGENTS:
+        _AGENTS[key] = build_contract_agent(use_genie=key[0], use_rag=key[1])
+    return _AGENTS[key]
 
 TAG_GROUP_RE = re.compile(r"\[\s*([GD]\d+(?:\s*[,;]\s*[GD]\d+)*)\s*\]")
 
@@ -749,13 +807,14 @@ def _is_contract_turn(user_msg: str, answer: str) -> bool:
     return str(answer).strip() not in NON_CONTRACT_ANSWERS and rule_based_message_type(str(user_msg)) is None
 
 def ask(query: str, session_id: str = "default", show: bool = True, agent=None, metadata: dict | None = None,
-        enrich: bool = True) -> dict:
+        enrich: bool = True, use_genie: bool | None = None, use_rag: bool | None = None) -> dict:
     """User message -> glossary enrichment -> Deep Agent -> Genie + metadata-aware RAG -> one merged, cited answer.
     enrich: add business glossary context (enrich_question) to the query before it goes to the Deep Agent.
     metadata: optional pre-extracted metadata used by RAG instead of extracting it from the agent's query.
     session_id is only used to group traces in MLflow."""
+    use_genie, use_rag = resolve_sources(use_genie, use_rag)
     with mlflow.start_span(name="contract_agent", span_type=SpanType.AGENT) as span:
-        span.set_inputs({"query": query, "session_id": session_id})
+        span.set_inputs({"query": query, "session_id": session_id, "use_genie": use_genie, "use_rag": use_rag})
         agent_input, glossary = (enrich_user_query(query) if enrich else (query, None))
         mlflow.update_current_trace(user=_runtime().user_id, session_id=session_id)
         if glossary and not glossary['in_scope']:
@@ -764,11 +823,12 @@ def ask(query: str, session_id: str = "default", show: bool = True, agent=None, 
             span.set_outputs({'answer': out['answer'], 'in_scope': False, 'message_type': out['message_type']})
             return out
 
-        state = {"metadata": None, "sources": {"genie": [], "rag": []}, "rag_query": None, "preset_metadata": metadata}
+        state = {"metadata": None, "sources": {"genie": [], "rag": []}, "rag_query": None, "preset_metadata": metadata,
+                 "use_genie": use_genie, "use_rag": use_rag}
         token = RUN_STATE.set(state)
         try:
             _runtime().check()
-            result = (agent or _runtime().agent or build_contract_agent()).invoke({"messages": [{"role": "user", "content": agent_input}]}, config={"recursion_limit": 30})
+            result = (agent or get_contract_agent(use_genie, use_rag)).invoke({"messages": [{"role": "user", "content": agent_input}]}, config={"recursion_limit": 30})
             _runtime().check()
         finally:
             RUN_STATE.reset(token)
@@ -788,7 +848,8 @@ def ask(query: str, session_id: str = "default", show: bool = True, agent=None, 
            "enriched_query": agent_input,
            "glossary": glossary,                     # full enrich_question() dict
            "glossary_terms": (glossary or {}).get("glossary_terms", []),
-           "in_scope": True, "out_of_scope_reason": None, "message_type": "contract"}
+           "in_scope": True, "out_of_scope_reason": None, "message_type": "contract",
+           "use_genie": use_genie, "use_rag": use_rag}
     if show:
         show_answer(out)
     return out
@@ -845,7 +906,8 @@ def build_followup_message(query: str, metadata: dict) -> str:
     return (f"{query}\n(Conversation context, only to identify what the question refers to: {context}. "
             f"Answer ONLY this question; do not repeat information from earlier questions.)")
 
-def _chat(query: str, session_id: str = "default", show: bool = False, understanding: dict | None = None, previous=None) -> dict:
+def _chat(query: str, session_id: str = "default", show: bool = False, understanding: dict | None = None, previous=None,
+          use_genie: bool | None = None, use_rag: bool | None = None) -> dict:
     """understand_query (1 LLM call: follow-up + standalone rewrite + glossary)
     -> fresh: ask(enriched question)
     -> follow-up: metadata from (follow-up + previous turn) -> ask(enriched question + context, metadata).
@@ -868,14 +930,16 @@ def _chat(query: str, session_id: str = "default", show: bool = False, understan
                               "out_of_scope_reason": u["out_of_scope_reason"], "answer": result["answer"]})
             return result                                  # previous contract context stays in owned history
         if not u["follow_up"]:
-            result = ask(u["enriched_question"], session_id=session_id, show=show, enrich=False)
+            result = ask(u["enriched_question"], session_id=session_id, show=show, enrich=False,
+                         use_genie=use_genie, use_rag=use_rag)
         else:
             with mlflow.start_span(name="extract_followup_metadata", span_type=SpanType.PARSER) as m_span:
                 m_span.set_inputs({"query": query, "previous_query": prev["query"]})
                 meta = extract_followup_metadata(query, prev["query"], prev["answer"])
                 m_span.set_outputs(meta)
             agent_query = build_followup_message(u["enriched_question"], meta)
-            result = ask(agent_query, session_id=session_id, show=show, metadata=meta, enrich=False)
+            result = ask(agent_query, session_id=session_id, show=show, metadata=meta, enrich=False,
+                         use_genie=use_genie, use_rag=use_rag)
             result["agent_query"] = agent_query
         result.update(user_query=query, is_follow_up=u["follow_up"], standalone_question=u["standalone_question"],
                       glossary=u, glossary_terms=u["glossary_terms"])
@@ -884,7 +948,8 @@ def _chat(query: str, session_id: str = "default", show: bool = False, understan
     return result
 
 def chat(query: str, *, token: str, history: list[dict], settings,
-         user_id: str, session_id: str, glossary=None, tracing=None, cancel=None, progress=None) -> dict:
+         user_id: str, session_id: str, glossary=None, tracing=None, cancel=None, progress=None,
+         use_genie: bool | None = None, use_rag: bool | None = None) -> dict:
     """Call the notebook pipeline directly with explicit, owner-checked app history.
 
     Returns answer + custom_outputs for React/Lakebase. History contains PRIOR
@@ -905,6 +970,7 @@ def chat(query: str, *, token: str, history: list[dict], settings,
                 break
     with open_runtime(settings, token, user_id, glossary=glossary, tracing=tracing, cancel=cancel, progress=progress) as runtime:
         try:
+            use_genie, use_rag = resolve_sources(use_genie, use_rag)
             # Notebook UI entry flow, inside the app's per-request runtime boundary.
             runtime.report('understanding')
             understanding = understand_query(query, previous['query'] if previous else None,
@@ -914,7 +980,9 @@ def chat(query: str, *, token: str, history: list[dict], settings,
                 result.update(user_query=query, is_follow_up=understanding['follow_up'],
                               standalone_question=understanding['standalone_question'])
             else:
-                result = _chat(query, session_id=session_id, previous=previous, understanding=understanding)
+                result = _chat(query, session_id=session_id, previous=previous, understanding=understanding,
+                               use_genie=use_genie, use_rag=use_rag)
+            result.update(use_genie=use_genie, use_rag=use_rag)
             runtime.check()
             return format_result(result, query, runtime)
         except Exception as error:
@@ -925,27 +993,32 @@ def chat(query: str, *, token: str, history: list[dict], settings,
 
 
 def contract_assistant(message, *, token, history, settings, user_id, session_id,
-                       glossary=None, tracing=None, cancel=None, new_conversation=False, request_id=None, progress=None):
+                       glossary=None, tracing=None, cancel=None, new_conversation=False, request_id=None, progress=None,
+                       use_genie: bool | None = None, use_rag: bool | None = None):
     """App entry point: one root trace; failures propagate to existing HTTP error handling."""
     from .agent_runtime import DisabledTracing
     tracing = tracing if tracing is not None else DisabledTracing()
     start = time.perf_counter()
     with tracing.start_span(name='contract_assistant', span_type=SpanType.AGENT) as span:
         span.set_inputs({'message': message, 'session_id': session_id, 'user_id': user_id,
-                         'history_turns': len(history), 'new_conversation': new_conversation})
+                         'history_turns': len(history), 'new_conversation': new_conversation,
+                         'use_genie': use_genie, 'use_rag': use_rag})
         result = chat(message, token=token, history=[] if new_conversation else history, settings=settings,
-                      user_id=user_id, session_id=session_id, glossary=glossary, tracing=tracing, cancel=cancel, progress=progress)
+                      user_id=user_id, session_id=session_id, glossary=glossary, tracing=tracing, cancel=cancel, progress=progress,
+                      use_genie=use_genie, use_rag=use_rag)
         result['custom_outputs'].update(trace_id=getattr(span, 'trace_id', None),
             latency_s=round(time.perf_counter()-start, 2), session_id=session_id)
         if result['status'] == 'error':
             span.set_status(SpanStatusCode.ERROR)
         span.set_outputs(result)
         tracing.update_current_trace(user=user_id, session_id=session_id, client_request_id=request_id,
-            tags={'app': 'contract_assistant', 'app_version': 'deep_agent_v1_6_2026_11_17', 'status': result['status'],
+            tags={'app': settings.agent_app_name, 'app_version': settings.agent_app_version, 'status': result['status'],
                   'is_follow_up': str(result['custom_outputs'].get('is_follow_up', False)).lower(),
                   'message_type': str(result['custom_outputs'].get('message_type')),
                   'classification_status': str(result['custom_outputs'].get('classification_status')),
-                  'llm_model': settings.agent_model},
+                  'llm_model': settings.agent_model,
+                  'use_genie': str(result['custom_outputs']['use_genie']).lower(),
+                  'use_rag': str(result['custom_outputs']['use_rag']).lower()},
             request_preview=message[:1000], response_preview=result['answer'][:1000])
         return result
 

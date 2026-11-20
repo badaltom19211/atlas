@@ -108,7 +108,7 @@ def test_unicode_citations_reach_ui_metadata_and_notebook_source_list(notebook, 
         def invoke(self, data, **kwargs):
             notebook.search_contracts.invoke({'query': data['messages'][0]['content']})
             return {'messages': [SimpleNamespace(content='Contract facts ' + tags + '.')]}
-    monkeypatch.setattr(notebook, 'build_contract_agent', lambda: Agent())
+    monkeypatch.setattr(notebook, 'build_contract_agent', lambda **kwargs: Agent())
     result = invoke_chat(notebook, payload())
     references = result['custom_outputs']['references']
     assert {s['id'] for s in references if s['used_in_answer']} == {'G1', 'D1'}

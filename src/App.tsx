@@ -3,7 +3,6 @@ import type { FormEvent, ReactNode } from 'react';
 import { ArrowDown, ArrowRight, ArrowUp, Bookmark, CheckCheck, ChevronRight, CircleHelp, Copy, History, LogOut, Menu, MessageCircle, MessageSquare, Monitor, PanelLeftClose, PenLine, Plus, Search, ShieldCheck, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react';
 import Answer from './Answer';
 import AboutAIA from './AboutAIA';
-import ConversationExport from './ConversationExport';
 import Thinking, { type ProgressStage } from './Thinking';
 import { api, failedResponseContent, isLive } from './api';
 import { ToolDetails } from './ToolDetails';
@@ -52,7 +51,6 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [modal, setModal] = useState<Modal>(null);
-  const [exportId, setExportId] = useState<string | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
   const [savingTitle, setSavingTitle] = useState(false);
   const [targetId, setTargetId] = useState<string | null>(null);
@@ -86,7 +84,6 @@ export default function App() {
   const profileName = rawName.includes(',') ? rawName.split(',').map(part => part.trim()).reverse().join(' ') : rawName;
   const profileInitial = Array.from(profileName || 'User')[0].toLocaleUpperCase();
   const active = conversations.find(c => c.id === activeId);
-  const exportConversation = conversations.find(c => c.id === exportId);
   const noteMessage = conversations.find(c => c.id === commentTarget?.cid)?.messages.find(m => m.id === commentTarget?.mid);
   const visible = conversations.filter(c => !c.archived).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const saved = conversations.flatMap(c => c.messages.filter(m => m.saved).map(m => ({ c, m })));
@@ -96,11 +93,11 @@ export default function App() {
 
   useEffect(() => {
     if (isLive) api.boot().then(data => { setUser(data.user); setConversations(data.conversations); setHistoryStorage(data.historyStorage); }).catch(e => setAuthError(e.message)).finally(() => setReady(true));
-    const unauthorized = () => { setAuthError('Your Databricks session expired. Please sign in again.'); setUser(null); setConversations([]); setExportId(null); abortRef.current?.abort(); };
+    const unauthorized = () => { setAuthError('Your Databricks session expired. Please sign in again.'); setUser(null); setConversations([]); abortRef.current?.abort(); };
     window.addEventListener('atlas:unauthorized', unauthorized);
     return () => { window.removeEventListener('atlas:unauthorized', unauthorized); };
   }, []);
-  useEffect(() => { if (!isLive) { try { localStorage.setItem('atlas.conversations.v1', JSON.stringify(conversations)); } catch { setToast('Browser storage is full. Export important conversations before closing this tab.'); } } }, [conversations]);
+  useEffect(() => { if (!isLive) { try { localStorage.setItem('atlas.conversations.v1', JSON.stringify(conversations)); } catch { setToast('Browser storage is full. Copy important responses before closing this tab.'); } } }, [conversations]);
   useEffect(() => { if (toast) { const id = setTimeout(() => setToast(''), 4500); return () => clearTimeout(id); } }, [toast]);
   useEffect(() => {
     const handle = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setModal('search'); } if (e.key === 'Escape') { setSidebar(false); setCommentTarget(null); } };
@@ -215,9 +212,8 @@ export default function App() {
       <div className="brand-row"><button className="brand" onClick={newChat}><span className="wordmark">AIA<span className="brand-dot" aria-hidden="true">.</span></span></button><IconButton label="Close navigation" onClick={() => { setSidebar(false); if (window.innerWidth > 760) setNavCollapsed(true); }}><PanelLeftClose size={17} /></IconButton></div>
       <button className="new-chat" onClick={newChat}><Plus size={17} /><span>New conversation</span><span className="new-shortcut">↗</span></button>
       <nav className="main-nav" aria-label="Main navigation"><button onClick={() => { setSidebar(false); setModal('search'); }}><Search size={18} /><span>Search</span><kbd>{searchShortcut}</kbd></button><button className={view === 'library' ? 'selected' : ''} onClick={() => { setView('library'); setSidebar(false); setCommentTarget(null); }}><Bookmark size={18} /><span>Saved responses</span>{saved.length > 0 && <span className="nav-count">{saved.length}</span>}</button></nav>
-      <div className="sidebar-conversations"><div className="sidebar-section-title"><span>CONVERSATIONS</span><span className="conversation-total">{visible.length}</span></div>{visible.map(c => <div className={`sidebar-chat ${activeId === c.id && view === 'chat' ? 'selected' : ''}`} key={c.id}><button className="history-link" onClick={() => openConversation(c.id)}><MessageSquare size={15} /><span>{c.title}</span></button><ChatActions title={c.title} disabled={busyId === c.id} onRename={() => renameChat(c.id)} onDelete={() => deleteChat(c.id)} onExport={c.messages.length ? () => setExportId(c.id) : undefined} /></div>)}</div>
+      <div className="sidebar-conversations"><div className="sidebar-section-title"><span>CONVERSATIONS</span><span className="conversation-total">{visible.length}</span></div>{visible.map(c => <div className={`sidebar-chat ${activeId === c.id && view === 'chat' ? 'selected' : ''}`} key={c.id}><button className="history-link" onClick={() => openConversation(c.id)}><MessageSquare size={15} /><span>{c.title}</span></button><ChatActions title={c.title} disabled={busyId === c.id} onRename={() => renameChat(c.id)} onDelete={() => deleteChat(c.id)} /></div>)}</div>
     </aside>
-    {exportConversation && <ConversationExport conversation={exportConversation} close={() => setExportId(null)} />}
     <main className="main-shell">
       <header className="topbar"><div className="breadcrumb"><button className="mobile-menu icon-button" aria-label="Open navigation" onClick={() => { setNavCollapsed(false); setSidebar(true); }}><Menu size={20} /></button><span className="workspace-name"><span className="workspace-symbol" aria-hidden="true" />AIA</span><ChevronRight size={13} /><strong>{view === 'home' ? 'New conversation' : view === 'chat' ? (active?.title || 'Conversation') : 'Saved responses'}</strong></div><div className="topbar-right"><IconButton label="About AIA" onClick={() => setModal('about')}><CircleHelp size={18} /></IconButton><span className="topbar-divider" /><button className="header-profile" onClick={openSettings} aria-label={`Account settings for ${profileName}`} title={profileName}><span className="header-profile-name">{profileName}</span><span className="avatar" aria-hidden="true">{profileInitial}</span></button></div></header>
       <div className={`content-layout ${commentTarget ? 'with-comments' : ''}`}><div className="main-content">

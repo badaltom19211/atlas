@@ -28,7 +28,10 @@ def normalize_sources(sources, host):
 
 
 def format_result(result, question, runtime):
-    if len(runtime.failures) == 2:
+    use_genie = result.get('use_genie', runtime.settings.use_genie)
+    use_rag = result.get('use_rag', runtime.settings.use_rag)
+    enabled = ({'genie'} if use_genie else set()) | ({'documents'} if use_rag else set())
+    if enabled and enabled.issubset(runtime.failures):
         raise next(iter(runtime.failures.values()))
     refs = result.get('references', [])
     understanding = result.get('glossary') or {}
@@ -39,6 +42,7 @@ def format_result(result, question, runtime):
     for stage in runtime.failures:
         answer += '\n\n' + ('Structured contract lookup' if stage == 'genie' else 'Contract document search') + ' is unavailable; those facts could not be checked.'
     output = {'sources': [], 'references': refs, 'source_display': 'grouped',
+              'use_genie': use_genie, 'use_rag': use_rag,
               'status': status, 'error': error,
               'workflow': 'notebook_chat', 'standalone_question': result.get('standalone_question'), 'is_follow_up': bool(result.get('is_follow_up')),
               'in_scope': result.get('in_scope', True), 'message_type': result.get('message_type', 'contract'),
@@ -52,7 +56,7 @@ def format_result(result, question, runtime):
               'citation_status': 'reported' if any(r.get('used_in_answer') for r in refs) else ('missing' if refs else 'not_applicable'),
               'tracing': 'disabled' if isinstance(runtime.tracing, DisabledTracing) else 'configured'}
     output_size = len(json.dumps({'custom_outputs': output}, ensure_ascii=False, allow_nan=False))
-    if not failed and 'genie' not in runtime.failures:
+    if use_genie and not failed and 'genie' not in runtime.failures:
         tables = bounded_results(getattr(runtime, 'genie_results', []), refs, min(20000, max(0, 61500 - output_size)))
         if tables:
             output['genie_results'] = tables

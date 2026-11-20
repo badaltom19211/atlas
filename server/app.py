@@ -163,7 +163,7 @@ def create_app(settings=None, session_factory=None, model=None, *, testing=False
     def create_conversation(body: CreateConversation, session=Depends(current), db=Depends(database)):
         count = db.scalar(select(func.count()).select_from(Conversation).where(Conversation.user_id == session.user_id))
         if count >= 500:
-            raise HTTPException(409, "This workspace has reached 500 conversations. Export and delete old conversations to make room.")
+            raise HTTPException(409, "This workspace has reached 500 conversations. Delete old conversations to make room.")
         conversation = Conversation(user_id=session.user_id, title=body.title)
         db.add(conversation)
         db.commit()

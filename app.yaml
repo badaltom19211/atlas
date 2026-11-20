@@ -9,10 +9,16 @@ env:
     value: databricks-app
   - name: ATLAS_HISTORY_BACKEND
     value: lakebase
-  - name: DATABRICKS_GENIE_AGENT_ID
-    value: REPLACE_WITH_TARGET_GENIE_AGENT_ID
-  - name: DATABRICKS_CONTRACT_INDEX
-    value: REPLACE_WITH_TARGET_CATALOG_SCHEMA_INDEX
+  # AIA defaults (Genie, index, endpoint and model tuning) live in contract_agent_config.py.
+  # Explicit env values override that shared file; remove stale index overrides when upgrading.
+  - name: ATLAS_USE_GENIE
+    value: 'true'
+  - name: ATLAS_USE_RAG
+    value: 'true'
+  - name: ATLAS_GENIE_TIMEOUT_SECONDS
+    value: '300'
+  - name: ATLAS_AGENT_TIMEOUT_SECONDS
+    value: '360'
   - name: DATABRICKS_MODEL_API
     value: gateway
   - name: DATABRICKS_AGENT_MODEL

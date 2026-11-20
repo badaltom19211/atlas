@@ -1,0 +1,10 @@
+{
+  "source_path": "/Volumes/dev_diamonddaas/raw/aia/AIAIMSG/MO_Contract_Mgt/Input/",
+  "catalog": "dev_diamonddaas",
+  "schema": "aia_contract_chatbot",
+  "file_extensions": [
+    "pdf"
+  ],
+  "hash_workers": 16,
+  "simulate_handoff": false
+}

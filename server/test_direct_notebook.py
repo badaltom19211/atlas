@@ -46,7 +46,7 @@ def notebook(monkeypatch):
             w.search_contracts.invoke({'query': data['messages'][0]['content']})
             return {'messages': [SimpleNamespace(content='There are 12 contracts [G1]. Notice is 30 days [D1].')]}
     monkeypatch.setattr(w, '_test_original_builder', w.build_contract_agent, raising=False)
-    monkeypatch.setattr(w, 'build_contract_agent', lambda: Agent())
+    monkeypatch.setattr(w, 'build_contract_agent', lambda **kwargs: Agent())
     return w
 
 
@@ -80,7 +80,7 @@ def test_followup_restores_owned_history_and_cleans_memory(notebook):
 
 
 def test_unknown_citations_rejected_and_session_cleaned(notebook, monkeypatch):
-    monkeypatch.setattr(notebook, 'build_contract_agent', lambda: SimpleNamespace(invoke=lambda *a, **kw: {'messages': [SimpleNamespace(content='Invented [D99].')]}))
+    monkeypatch.setattr(notebook, 'build_contract_agent', lambda **kwargs: SimpleNamespace(invoke=lambda *a, **kw: {'messages': [SimpleNamespace(content='Invented [D99].')]}))
     with pytest.raises(ValueError, match='not retrieved'):
         invoke_chat(notebook, payload())
     with pytest.raises(LookupError):
@@ -97,7 +97,7 @@ def test_both_sources_fail_without_fabricated_answer_or_private_error(notebook, 
         text = notebook.search_contracts.invoke({'query': 'Acme'})
         assert 'private-provider-body-secret' not in text
         return {'messages': [SimpleNamespace(content='Nothing found.')]}
-    monkeypatch.setattr(notebook, 'build_contract_agent', lambda: SimpleNamespace(invoke=invoke))
+    monkeypatch.setattr(notebook, 'build_contract_agent', lambda **kwargs: SimpleNamespace(invoke=invoke))
     with pytest.raises(NotebookCallError):
         invoke_chat(notebook, payload())
     with pytest.raises(LookupError):
@@ -266,7 +266,7 @@ def test_partial_source_failure_remains_visible(notebook, monkeypatch):
     def invoke(*args, **kwargs):
         notebook.search_contracts.invoke({'query': 'Acme'})
         return {'messages': [SimpleNamespace(content='Notice is 30 days [D1].')]}
-    monkeypatch.setattr(notebook, 'build_contract_agent', lambda: SimpleNamespace(invoke=invoke))
+    monkeypatch.setattr(notebook, 'build_contract_agent', lambda **kwargs: SimpleNamespace(invoke=invoke))
     result = invoke_chat(notebook, payload())
     assert 'Structured contract lookup is unavailable' in result['answer']
     assert 'private' not in result['answer']
@@ -351,7 +351,7 @@ def test_contract_assistant_has_one_root_trace_and_persistable_trace_id(monkeypa
             assert kwargs['user']=='alice' and kwargs['session_id']=='alice:chat'
     def chat(message, **kwargs):
         assert kwargs['history']==[]
-        return {'status':'ok', 'answer':'Answer', 'custom_outputs':{}}
+        return {'status':'ok', 'answer':'Answer', 'custom_outputs':{'use_genie': True, 'use_rag': True}}
     monkeypatch.setattr(w,'chat',chat)
     result=w.contract_assistant('Question', token='token', history=[{'role':'user','content':'old'}],
         settings=Settings(),user_id='alice',session_id='alice:chat',tracing=Tracing(),new_conversation=True)

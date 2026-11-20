@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ArrowRight, Download, MessageSquare, MoreHorizontal, PenLine, Plus, Search, Trash2, X } from 'lucide-react';
+import { Archive, ArrowRight, MessageSquare, MoreHorizontal, PenLine, Plus, Search, Trash2, X } from 'lucide-react';
 import { SearchText } from './SearchText';
 import { searchConversations } from './search';
 import type { ConversationResult, ConversationScope } from './search';
@@ -58,7 +58,7 @@ export function ConversationSearch({ conversations, onOpen }: { conversations: C
   </>;
 }
 
-export function ChatActions({ title, disabled, onRename, onDelete, onExport }: { title: string; disabled?: boolean; onRename: () => void; onDelete: () => void; onExport?: () => void }) {
+export function ChatActions({ title, disabled, onRename, onDelete }: { title: string; disabled?: boolean; onRename: () => void; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -70,7 +70,7 @@ export function ChatActions({ title, disabled, onRename, onDelete, onExport }: {
   }, [open]);
   return <div className="chat-actions-menu" ref={ref} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false); }} onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); trigger.current?.focus(); } }}>
     <button ref={trigger} className="icon-button" aria-label={`Options for ${title}`} aria-expanded={open} onClick={() => setOpen(!open)}><MoreHorizontal size={17} /></button>
-    {open && <div className="chat-actions-popover" role="group" aria-label="Conversation actions"><button disabled={disabled} onClick={() => { setOpen(false); onRename(); }}><PenLine size={15} />Rename</button>{onExport && <button disabled={disabled} onClick={() => { setOpen(false); onExport(); }}><Download size={15} />Export PDF</button>}<button className="delete-chat-action" disabled={disabled} onClick={() => { setOpen(false); onDelete(); }}><Trash2 size={15} />Delete</button></div>}
+    {open && <div className="chat-actions-popover" role="group" aria-label="Conversation actions"><button disabled={disabled} onClick={() => { setOpen(false); onRename(); }}><PenLine size={15} />Rename</button><button className="delete-chat-action" disabled={disabled} onClick={() => { setOpen(false); onDelete(); }}><Trash2 size={15} />Delete</button></div>}
   </div>;
 }
 

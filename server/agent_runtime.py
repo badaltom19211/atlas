@@ -68,7 +68,7 @@ class RequestRuntime:
     tracing: object = field(default_factory=DisabledTracing)
     cancel: threading.Event = field(default_factory=threading.Event)
     failures: dict = field(default_factory=dict)
-    agent: object = None
+    agents: dict = field(default_factory=dict)
     oai: object = None
     vs_index: object = None
     http: object = None
@@ -157,7 +157,8 @@ def open_runtime(settings, token, user_id, *, glossary=None, tracing=None, cance
                 def similarity_search(self, **kwargs):
                     runtime.check()
                     client = VectorSearchClient(workspace_url=runtime.host, personal_access_token=token, disable_notice=True)
-                    index = client.get_index(index_name=settings.contract_index)
+                    index = client.get_index(index_name=settings.contract_index,
+                                             **({'endpoint_name': settings.vector_search_endpoint} if settings.vector_search_endpoint else {}))
                     runtime.check()
                     result = index.similarity_search(**kwargs, total_retries=0)
                     runtime.check()
@@ -166,5 +167,6 @@ def open_runtime(settings, token, user_id, *, glossary=None, tracing=None, cance
             yield runtime
         finally:
             runtime.http.close()
-            runtime.agent = runtime.oai = runtime.vs_index = runtime.http = None
+            runtime.agents.clear()
+            runtime.oai = runtime.vs_index = runtime.http = None
             runtime.token = ''

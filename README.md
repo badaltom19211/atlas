@@ -22,16 +22,6 @@ with known page ranges under Sources. Internal citation tags are validated befor
 being removed from the displayed answer. Older chats keep their inline references.
 Existing chats, database tables and authentication remain compatible.
 
-To export a conversation, open its sidebar **...** menu, choose **Export PDF**, then
-**Save as PDF** in the preview. Select **Save as PDF** as the browser's print destination
-and turn off **Headers and footers**. The export includes every question and answer
-and the available answer tables; chart data is exported as a table. Citation tags,
-source sections/links, SQL source metadata, feedback and notes are excluded.
-The original conversation is unchanged. Export is disabled while that conversation
-is generating an answer. A stopped/error answer or truncated table is marked as
-incomplete. This runs in the browser; no new backend dependency, app.yaml setting,
-database migration or external PDF service is needed.
-
 Contract PDF sources now open through the authenticated `/api/documents/pdf?path=...`
 route in a new tab. The backend streams the file from the Databricks Files API with
 the signed-in user's token, including byte-range requests used by PDF viewers.
@@ -75,6 +65,30 @@ No app.yaml changes or database migration are required; redeploy updated code.
 
 ## Runtime
 
+The 19 November `deep_agent_v1 (7).ipynb` update adds independent Genie/RAG
+switches and prompts for combined, structured-only or document-only answers.
+Set `ATLAS_USE_GENIE` and `ATLAS_USE_RAG` to `true`/`false`; at least one must be
+enabled. Disabled sources are never called. Scope handling and follow-ups remain
+in `server/deep_agent_v1.py`, with request-local agent caches and credentials.
+
+The supplied `contact_agent_config.py` is integrated as the root
+`contract_agent_config.py` (the name imported by the notebooks). It holds shared
+non-secret defaults. `server/config.py` reads these and applies environment
+overrides. The new document index is
+`dev_diamonddaas.aia_contract_chatbot.ai_contextualized_chunk_index` on endpoint
+`aia_contract_search`; the provided Genie space is unchanged. Remove stale index
+overrides from your deployed `app.yaml` or set them to this index. Genie timeout
+is 300 seconds; the app workflow deadline defaults to 360 seconds. Notebook
+credentials and global session state are not imported into the app.
+
+The [ingestion Job package](setup/ingestion/README.md) includes the supplied full
+pipeline and a dedup-config example. Run it separately from chat. It requires
+existing pipeline table schemas and a reviewed dedup configuration. Pending
+document removals do not yet delete index entries; see the developer follow-ups.
+
+Conversation PDF export and its menu button have been removed. Contract PDF
+links under Sources and the authenticated document endpoint are retained.
+
 The backend imports `server/deep_agent_v1.py` and directly calls its `contract_assistant()`
 entry point, which calls `chat()` in the existing app process. `server/notebook_bridge.py` keeps that
 synchronous work off the web event loop; no subprocess or notebook Job runs.
@@ -104,7 +118,7 @@ shows an animated indicator and changes text every 4.5 seconds within the curren
 stage. It advances stages only on backend events, never on a simulated timer.
 These are workflow statuses, not model reasoning or token streaming.
 
-The latest `deep_agent_v1 (6).ipynb` scope handling is integrated in `server/deep_agent_v1.py`;
+The `deep_agent_v1 (6).ipynb` scope handling, retained in v7, is integrated in `server/deep_agent_v1.py`;
 the separate `server/app_scope.py` wrapper is removed. The notebook recognizes
 simple greetings/thanks/help without model calls and combines other scope checks
 with query understanding. Non-contract replies skip the Deep Agent and retrieval;
@@ -114,7 +128,7 @@ now return the notebook's retry reply with error status and no agent/Genie/RAG c
 The app persists the reply and failure metadata, marks the optional root MLflow
 trace as error, and preserves the previous valid contract context. Uncertain-scope
 prompt behavior and Unicode small-talk cleanup remain developer follow-ups.
-See [integration and developer follow-ups](DIRECT_NOTEBOOK_WORKFLOW.md#17-november-latest-notebook-integration).
+See [integration and developer follow-ups](DIRECT_NOTEBOOK_WORKFLOW.md#17-november-scope-integration-retained).
 No app.yaml or schema change is required.
 
 Source references are still stored with the answer in Lakebase. The UI displays
